@@ -279,7 +279,11 @@ export const DebtsScreen: React.FC = () => {
                                     </div>
                                     <div className="text-right">
                                         <div className="text-xl font-extrabold text-slate-800 dark:text-slate-100">{fmt(debt.amount)}</div>
-                                        <p className="text-[10px] text-slate-400">{new Date(debt.dueDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</p>
+                                        <div className="flex justify-end mt-1">
+                                            <p className="text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/10 px-3 py-1 rounded-lg">
+                                                {new Date(debt.dueDate + 'T12:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -307,14 +311,17 @@ export const DebtsScreen: React.FC = () => {
 
             {/* Modal */}
             {showModal && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" onClick={closeModal}>
-                    <div className="bg-white dark:bg-[#2d1820] w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-6">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={closeModal}>
+                    <div
+                        className="bg-white dark:bg-[#2d1820] w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200 relative max-h-[85vh] overflow-y-auto scrollbar-hide"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex justify-between items-center mb-6 sticky top-0 bg-white dark:bg-[#2d1820] z-10">
                             <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100">
                                 {editingDebt ? 'Editar deuda' : 'Nueva deuda ✨'}
                             </h2>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-rose-500">
-                                <span className="material-symbols-outlined">close</span>
+                            <button onClick={closeModal} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/10 flex items-center justify-center text-slate-500 hover:bg-rose-100 hover:text-rose-500 transition-colors">
+                                <span className="material-symbols-outlined text-lg">close</span>
                             </button>
                         </div>
 
@@ -326,13 +333,13 @@ export const DebtsScreen: React.FC = () => {
                                     value={title}
                                     onChange={e => setTitle(e.target.value)}
                                     placeholder="Ej: Tarjeta de crédito..."
-                                    className="w-full bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/50 rounded-2xl px-4 py-3 focus:outline-none focus:border-pink-400 dark:text-slate-100"
+                                    className="w-full bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/50 rounded-2xl px-4 py-3 focus:outline-none focus:border-pink-400 dark:text-slate-100 transition-colors"
                                 />
                             </div>
 
                             <div>
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 block">Monto</label>
-                                <div className="flex items-center gap-2 bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/50 rounded-2xl px-4 py-3 focus-within:border-pink-400">
+                                <div className="flex items-center gap-2 bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/50 rounded-2xl px-4 py-3 focus-within:border-pink-400 transition-colors">
                                     <span className="text-slate-400 font-bold">$</span>
                                     <input
                                         type="number"
@@ -397,9 +404,9 @@ export const DebtsScreen: React.FC = () => {
 
                             <button
                                 onClick={handleSave}
-                                className="w-full py-4 mt-4 bg-slate-900 dark:bg-pink-500 text-white rounded-2xl font-extrabold text-base shadow-lg hover:scale-[1.02] active:scale-95 transition-all"
+                                className="w-full py-4 mt-6 bg-slate-900 dark:bg-gradient-to-r dark:from-pink-500 dark:to-rose-500 text-white rounded-2xl font-extrabold text-base shadow-lg hover:scale-[1.02] active:scale-95 transition-all mb-2"
                             >
-                                {editingDebt ? 'Guardar cambios' : 'Crear deuda'}
+                                {editingDebt ? 'Guardar cambios' : 'Crear deuda 💸'}
                             </button>
                         </div>
                     </div>
