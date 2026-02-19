@@ -169,32 +169,45 @@ export const FinanceScreen: React.FC = () => {
         setShowAdd(true);
     };
 
+    const [isSaving, setIsSaving] = useState(false);
+
     const saveTransaction = async () => {
-        if (!user) return;
+        if (!user || isSaving) return;
         setTxError('');
         const val = parseFloat(txAmount);
         if (!txAmount || isNaN(val) || val <= 0) { setTxError('Ingresa un monto válido.'); return; }
         if (!txAccount) { setTxError('Selecciona la cuenta.'); return; }
         if (!txCat) { setTxError('Selecciona una categoría.'); return; }
 
-        const now = new Date();
-        const tx: Transaction = {
-            id: Date.now(),
-            type: txType,
-            accountId: txAccount,
-            amount: val,
-            category: txCat,
-            emoji: txCatEmoji,
-            description: txDesc.trim(),
-            dateISO: todayStr(),
-            date: now.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
-        };
+        setIsSaving(true);
+        try {
+            const now = new Date();
+            const tx: Transaction = {
+                id: Date.now(),
+                type: txType,
+                accountId: txAccount,
+                amount: val,
+                category: txCat,
+                emoji: txCatEmoji,
+                description: txDesc.trim(),
+                dateISO: todayStr(),
+                date: now.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
+            };
 
-        await FirestoreService.addTransaction(user.uid, tx);
-        setTxList(prev => [tx, ...prev]);
-        const updatedData = await FirestoreService.getFeatureData(user.uid, 'finance');
-        if (updatedData) setData(updatedData as FinanceData);
-        setShowAdd(false);
+            await FirestoreService.addTransaction(user.uid, tx);
+            setTxList(prev => [tx, ...prev]);
+
+            // Refresh main data to update balances immediately
+            const updatedData = await FirestoreService.getFeatureData(user.uid, 'finance');
+            if (updatedData) setData(updatedData as FinanceData);
+
+            setShowAdd(false);
+        } catch (e) {
+            setTxError('Error al guardar. Intenta de nuevo.');
+            console.error(e);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const deleteTransaction = async () => {
@@ -407,7 +420,7 @@ export const FinanceScreen: React.FC = () => {
                                         </span>
                                         <button
                                             onClick={() => setShowDelModal(t.id)}
-                                            className="opacity-0 group-hover:opacity-100 text-slate-200 hover:text-rose-400 transition-all"
+                                            className="text-slate-300 dark:text-slate-600 hover:text-rose-400 transition-all p-1"
                                         >
                                             <span className="material-symbols-outlined text-base">delete</span>
                                         </button>
@@ -564,9 +577,10 @@ export const FinanceScreen: React.FC = () => {
                             {/* Save button */}
                             <button
                                 onClick={saveTransaction}
-                                className={`w-full py-4 rounded-2xl font-extrabold text-white text-base shadow-lg hover:scale-[1.02] active:scale-95 transition-all ${txType === 'expense' ? 'bg-gradient-to-r from-rose-400 to-pink-500' : 'bg-gradient-to-r from-emerald-400 to-teal-500'}`}
+                                disabled={isSaving}
+                                className={`w-full py-4 rounded-2xl font-extrabold text-white text-base shadow-lg hover:scale-[1.02] active:scale-95 transition-all ${isSaving ? 'bg-slate-300 dark:bg-slate-700 cursor-not-allowed' : (txType === 'expense' ? 'bg-gradient-to-r from-rose-400 to-pink-500' : 'bg-gradient-to-r from-emerald-400 to-teal-500')}`}
                             >
-                                {txType === 'expense' ? '💸 Guardar gasto' : '💰 Guardar ingreso'}
+                                {isSaving ? 'Guardando...' : (txType === 'expense' ? '💸 Guardar gasto' : '💰 Guardar ingreso')}
                             </button>
                         </div>
                     </div>
