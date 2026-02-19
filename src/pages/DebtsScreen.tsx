@@ -97,39 +97,55 @@ export const DebtsScreen: React.FC = () => {
         if (!user) return;
         if (!confirm(`¿Marcar "${debt.title}" como pagada?`)) return;
 
-        let updatedDebts = [...debts];
-
-        if (debt.type === 'unique') {
-            // Remove if unique
-            updatedDebts = updatedDebts.filter(d => d.id !== debt.id);
-        } else {
-            // Update date if recurring
-            const current = new Date(debt.dueDate);
-            let next = new Date(current);
-
-            // Add frequency logic
-            // Careful with JS dates and timezones, using simple addition
-            if (debt.frequency === 'weekly') next.setDate(current.getDate() + 7);
-            else if (debt.frequency === 'biweekly') next.setDate(current.getDate() + 15);
-            else if (debt.frequency === 'monthly') next.setMonth(current.getMonth() + 1);
-
-            // Format back to YYYY-MM-DD
-            const nextIso = next.toISOString().split('T')[0];
-
-            updatedDebts = updatedDebts.map(d =>
-                d.id === debt.id ? { ...d, dueDate: nextIso } : d
-            );
-        }
-
-        updatedDebts.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-
         try {
+            let updatedDebts = [...debts];
+
+            if (debt.type === 'unique') {
+                // Remove if unique
+                updatedDebts = updatedDebts.filter(d => d.id !== debt.id);
+            } else {
+                // Update date if recurring
+                // Safe date parsing avoiding timezone issues
+                const [y, m, d] = debt.dueDate.split('-').map(Number);
+                const current = new Date(y, m - 1, d); // Month is 0-indexed
+                const next = new Date(current);
+
+                // Add frequency logic
+                if (debt.frequency === 'weekly') {
+                    next.setDate(current.getDate() + 7);
+                } else if (debt.frequency === 'biweekly') {
+                    next.setDate(current.getDate() + 15);
+                } else if (debt.frequency === 'monthly') {
+                    next.setMonth(current.getMonth() + 1);
+                } else {
+                    // Default to monthly if missing
+                    next.setMonth(current.getMonth() + 1);
+                }
+
+                // Format back to YYYY-MM-DD manually to ensure local date is stable
+                const nextY = next.getFullYear();
+                const nextM = String(next.getMonth() + 1).padStart(2, '0');
+                const nextD = String(next.getDate()).padStart(2, '0');
+                const nextIso = `${nextY}-${nextM}-${nextD}`;
+
+                updatedDebts = updatedDebts.map(d =>
+                    d.id === debt.id ? { ...d, dueDate: nextIso } : d
+                );
+            }
+
+            // Sort
+            updatedDebts.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
             const ref = doc(db, `users/${user.uid}/features`, Features.DEBTS);
             await setDoc(ref, { items: updatedDebts }, { merge: true });
+
+            // Update local state immediately
             setDebts(updatedDebts);
+
+            // Optional: Alert success? Maybe not needed for speed
         } catch (e) {
-            console.error(e);
-            alert("Error al actualizar");
+            console.error("Error paying debt:", e);
+            alert("Error al actualizar la deuda");
         }
     };
 
