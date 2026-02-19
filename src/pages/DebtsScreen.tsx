@@ -95,7 +95,9 @@ export const DebtsScreen: React.FC = () => {
 
     const handlePay = async (debt: Debt) => {
         if (!user) return;
-        if (!confirm(`¿Marcar "${debt.title}" como pagada?`)) return;
+
+        // Removed confirm to ensure UX responsiveness
+        // if (!confirm(`¿Marcar "${debt.title}" como pagada?`)) return;
 
         try {
             let updatedDebts = [...debts];
@@ -105,8 +107,12 @@ export const DebtsScreen: React.FC = () => {
                 updatedDebts = updatedDebts.filter(d => d.id !== debt.id);
             } else {
                 // Update date if recurring
-                // Safe date parsing avoiding timezone issues
-                const [y, m, d] = debt.dueDate.split('-').map(Number);
+                const parts = debt.dueDate.split('-');
+                if (parts.length !== 3) {
+                    alert("Error en formato de fecha. Edita la deuda primero.");
+                    return;
+                }
+                const [y, m, d] = parts.map(Number);
                 const current = new Date(y, m - 1, d); // Month is 0-indexed
                 const next = new Date(current);
 
@@ -122,7 +128,7 @@ export const DebtsScreen: React.FC = () => {
                     next.setMonth(current.getMonth() + 1);
                 }
 
-                // Format back to YYYY-MM-DD manually to ensure local date is stable
+                // Format back to YYYY-MM-DD manually
                 const nextY = next.getFullYear();
                 const nextM = String(next.getMonth() + 1).padStart(2, '0');
                 const nextD = String(next.getDate()).padStart(2, '0');
@@ -136,16 +142,17 @@ export const DebtsScreen: React.FC = () => {
             // Sort
             updatedDebts.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-            const ref = doc(db, `users/${user.uid}/features`, Features.DEBTS);
-            await setDoc(ref, { items: updatedDebts }, { merge: true });
-
-            // Update local state immediately
+            // Update local state immediately for instant feedback
             setDebts(updatedDebts);
 
-            // Optional: Alert success? Maybe not needed for speed
+            // Save to Firestore
+            const ref = doc(db, `users/${user.uid}/features`, 'debts');
+            await setDoc(ref, { items: updatedDebts }, { merge: true });
+
         } catch (e) {
             console.error("Error paying debt:", e);
-            alert("Error al actualizar la deuda");
+            alert("Hubo un error al guardar. Recargando...");
+            loadDebts();
         }
     };
 
