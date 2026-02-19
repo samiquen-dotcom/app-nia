@@ -95,7 +95,11 @@ export const HomeScreen: React.FC = () => {
 
                 if (upcoming.length > 0) {
                     setPendingDebts(upcoming);
-                    setShowDebtModal(true);
+                    const hasShown = sessionStorage.getItem('hasShownDebtPopup');
+                    if (!hasShown) {
+                        setShowDebtModal(true);
+                        sessionStorage.setItem('hasShownDebtPopup', 'true');
+                    }
                 }
             }
 
@@ -314,6 +318,29 @@ export const HomeScreen: React.FC = () => {
                 <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">Resumen de hoy</h3>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+
+                    {/* Debts Summary Card */}
+                    {pendingDebts.length > 0 && (
+                        <button
+                            onClick={() => navigate('/debts')}
+                            className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-rose-100 dark:border-rose-900/30 flex flex-col justify-between hover:shadow-md transition-shadow group text-left"
+                        >
+                            <div className="flex justify-between items-start w-full">
+                                <div className="bg-rose-50 dark:bg-rose-900/20 p-2 rounded-full text-rose-500 group-hover:scale-110 transition-transform">
+                                    <span className="material-symbols-outlined text-lg">payments</span>
+                                </div>
+                                <span className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                                    {pendingDebts.length}
+                                </span>
+                            </div>
+                            <div>
+                                <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">Deudas</p>
+                                <p className="text-[10px] text-rose-500 font-bold">
+                                    ¡Pendientes hoy!
+                                </p>
+                            </div>
+                        </button>
+                    )}
 
                     {/* Cycle Summary Card */}
                     {dashboard.periodStatus && dashboard.periodStatus.isActive && !dashboard.periodStatus.isDayMissing && (
