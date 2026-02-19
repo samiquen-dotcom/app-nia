@@ -62,7 +62,6 @@ export const DebtsScreen: React.FC = () => {
     const handleSave = async () => {
         if (!user) return;
 
-        // Validation
         const t = title.trim();
         if (!t) { alert('Falta el título'); return; }
 
@@ -72,6 +71,7 @@ export const DebtsScreen: React.FC = () => {
         if (!dueDate) { alert('Falta la fecha'); return; }
 
         try {
+            // Create proper object without undefined fields
             const newDebt: Debt = {
                 id: editingDebt ? editingDebt.id : Date.now().toString(),
                 title: t,
@@ -81,7 +81,13 @@ export const DebtsScreen: React.FC = () => {
                 dueDate
             };
 
-            // Calculate new list
+            // Sanitize for Firestore
+            // We create a cleaner copy to save, removing undefined keys
+            const debtToSave = { ...newDebt };
+            if (debtToSave.type === 'unique') {
+                delete debtToSave.frequency;
+            }
+
             let updatedDebts = [...debts];
             if (editingDebt) {
                 updatedDebts = updatedDebts.map(d => d.id === editingDebt.id ? newDebt : d);
@@ -95,13 +101,19 @@ export const DebtsScreen: React.FC = () => {
             closeModal();
 
             // 2. Save to Cloud
+            // Map the whole array to ensure no undefined fields in any item
+            const itemsToSave = updatedDebts.map(d => {
+                const copy = { ...d };
+                if (copy.type === 'unique') delete copy.frequency;
+                return copy;
+            });
+
             const ref = doc(db, `users/${user.uid}/features`, 'debts');
-            await setDoc(ref, { items: updatedDebts }, { merge: true });
+            await setDoc(ref, { items: itemsToSave }, { merge: true });
 
         } catch (e) {
             console.error("Error saving debt:", e);
             alert("Error al guardar: " + e);
-            // Revert state if save fails
             loadDebts();
         }
     };
