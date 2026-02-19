@@ -51,7 +51,17 @@ export interface PeriodData {
     cycleStartDate: string;   // YYYY-MM-DD
     cycleLength: number;      // default 28
     periodLength: number;     // default 5
-    symptomsLog: Record<string, string[]>;   // date → symptoms[]
+    isPeriodActive?: boolean; // Controls if the user is currently in a period
+    symptomsLog: Record<string, string[]>;   // date → symptoms[] (Legacy, keep for migration/compat)
+    dailyEntries?: Record<string, DailyCycleEntry>; // YYYY-MM-DD -> detailed entry
+}
+
+export interface DailyCycleEntry {
+    date: string;
+    flow?: 'light' | 'medium' | 'heavy';
+    energy?: 'ahorro' | 'poco' | 'estable' | 'impulso' | 'tope';
+    symptoms?: string[];
+    notes?: string;
 }
 
 // ─── Wellness ─────────────────────────────────────────────────────────────────

@@ -1,19 +1,26 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MoodTracker } from '../components/MoodTracker';
+import { CycleWidget } from '../components/CycleWidget';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService } from '../services/firestore';
-import type { FinanceData, GymData, FoodData, GoalsData } from '../types';
+import type { FinanceData, GymData, FoodData, GoalsData, PeriodData } from '../types';
 
-const todayStr  = () => new Date().toISOString().split('T')[0];
+const todayStr = () => new Date().toISOString().split('T')[0];
 const todayDate = () => new Date().toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
 
 interface DashboardData {
-    calories:     number;
-    gymDone:      boolean;
-    gymStreak:    number;
-    todaySpent:   number;
-    goalsTotal:   number;
-    goalsDone:    number;
+    calories: number;
+    gymDone: boolean;
+    gymStreak: number;
+    todaySpent: number;
+    goalsTotal: number;
+    goalsDone: number;
+    periodStatus?: {
+        isActive: boolean;
+        isDayMissing: boolean;
+        day: number;
+    };
 }
 
 const AFFIRMATIONS = [
@@ -25,13 +32,14 @@ const AFFIRMATIONS = [
 ];
 
 export const HomeScreen: React.FC = () => {
+    const navigate = useNavigate();
     const [dateString, setDateString] = useState('');
-    const [dashboard,  setDashboard]  = useState<DashboardData>({
+    const [dashboard, setDashboard] = useState<DashboardData>({
         calories: 0, gymDone: false, gymStreak: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0,
     });
     const { user } = useAuth();
     const displayName = user?.displayName ? user.displayName.split(' ')[0] : 'Nia';
-    const photoURL    = user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayName}&backgroundColor=ffd6e0`;
+    const photoURL = user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayName}&backgroundColor=ffd6e0`;
 
     // Pick a stable affirmation for today (changes daily)
     const affirmation = AFFIRMATIONS[new Date().getDate() % AFFIRMATIONS.length];
@@ -52,11 +60,13 @@ export const HomeScreen: React.FC = () => {
             FirestoreService.getFeatureData(user.uid, 'gym'),
             FirestoreService.getFeatureData(user.uid, 'food'),
             FirestoreService.getFeatureData(user.uid, 'goals'),
-        ]).then(([finRaw, gymRaw, foodRaw, goalsRaw]) => {
-            const fin   = finRaw   as FinanceData  | null;
-            const gym   = gymRaw   as GymData       | null;
-            const food  = foodRaw  as FoodData      | null;
-            const goals = goalsRaw as GoalsData     | null;
+            FirestoreService.getFeatureData(user.uid, 'period')
+        ]).then(([finRaw, gymRaw, foodRaw, goalsRaw, periodRaw]) => {
+            const fin = finRaw as FinanceData | null;
+            const gym = gymRaw as GymData | null;
+            const food = foodRaw as FoodData | null;
+            const goals = goalsRaw as GoalsData | null;
+            const period = periodRaw as PeriodData | null;
 
             // Today's calories from Food
             const todayFood = food?.days?.find(d => d.date === today);
@@ -68,7 +78,7 @@ export const HomeScreen: React.FC = () => {
             }
 
             // Gym: did she work out today?
-            const gymDone   = gym?.history?.some(h => h.date === today) ?? false;
+            const gymDone = gym?.history?.some(h => h.date === today) ?? false;
             const gymStreak = gym?.streak ?? 0;
 
             // Finance: today's expenses (filter by dateISO for reliability)
@@ -78,9 +88,42 @@ export const HomeScreen: React.FC = () => {
 
             // Goals completion
             const goalsTotal = goals?.goals?.length ?? 0;
-            const goalsDone  = goals?.goals?.filter(g => g.completed).length ?? 0;
+            const goalsDone = goals?.goals?.filter(g => g.completed).length ?? 0;
 
-            setDashboard({ calories, gymDone, gymStreak, todaySpent, goalsTotal, goalsDone });
+            // Cycle Status Logic
+            let periodStatus = undefined;
+            if (period) {
+                const isActive = period.isPeriodActive === true;
+                let isDayMissing = false;
+                let day = 0;
+
+                if (isActive && period.cycleStartDate) {
+                    // Check missing logic (simplified from widget)
+                    const start = new Date(period.cycleStartDate + 'T00:00:00');
+                    const now = new Date();
+                    now.setHours(0, 0, 0, 0);
+
+                    // Calc current day number
+                    day = Math.floor((now.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
+
+                    // Iterate to find missing
+                    for (let i = 0; i < 40; i++) {
+                        const current = new Date(start);
+                        current.setDate(start.getDate() + i);
+                        if (current > now) break;
+
+                        const dStr = current.toISOString().split('T')[0];
+                        if (!period.dailyEntries?.[dStr]) {
+                            isDayMissing = true;
+                            break;
+                        }
+                    }
+                }
+
+                periodStatus = { isActive, isDayMissing, day };
+            }
+
+            setDashboard({ calories, gymDone, gymStreak, todaySpent, goalsTotal, goalsDone, periodStatus });
         });
     }, [user]);
 
@@ -105,7 +148,7 @@ export const HomeScreen: React.FC = () => {
             <MoodTracker />
 
             {/* ── Daily Affirmation ──────────────────────────────────────────────── */}
-            <section className="px-6 py-2">
+            <section className="px-6 py-2 pb-0">
                 <div className="bg-gradient-to-br from-[#ffe5ec] to-[#fff0f3] dark:from-[#2d1820] dark:to-[#3a2028] rounded-2xl p-6 shadow-sm relative overflow-hidden">
                     <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/40 rounded-full blur-2xl"></div>
                     <div className="relative z-10">
@@ -117,11 +160,45 @@ export const HomeScreen: React.FC = () => {
                 </div>
             </section>
 
+            {/* ── Cycle Widget (Banner Mode) ─────────────────────────────────────── */}
+            {/* Show only if needed: Active & Missing OR Inactive (Prediction) */}
+            {(!dashboard.periodStatus?.isActive || (dashboard.periodStatus.isActive && dashboard.periodStatus.isDayMissing)) && (
+                <section className="px-6 py-4 pb-0">
+                    <CycleWidget />
+                </section>
+            )}
+
             {/* ── Summary Grid ───────────────────────────────────────────────────── */}
             <section className="px-6 py-4">
                 <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">Resumen de hoy</h3>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+
+                    {/* Cycle Summary Card (If Logged & Active) */}
+                    {dashboard.periodStatus?.isActive && !dashboard.periodStatus.isDayMissing && (
+                        <div
+                            onClick={() => navigate('/period')}
+                            className="bg-gradient-to-br from-pink-50 to-white dark:from-[#3a2028] dark:to-[#2d1820] p-4 rounded-3xl shadow-sm border border-pink-100 dark:border-[#5a2b35] flex flex-col justify-between hover:shadow-md transition-all cursor-pointer group"
+                        >
+                            <div className="flex justify-between items-start">
+                                <div className="bg-pink-100 p-2 rounded-full text-pink-500 group-hover:scale-110 transition-transform">
+                                    <span className="material-symbols-outlined text-lg">water_drop</span>
+                                </div>
+                                <span className="text-xs font-bold text-pink-400 flex items-center gap-1">
+                                    Día {dashboard.periodStatus.day}
+                                </span>
+                            </div>
+                            <div>
+                                <p className="font-bold text-slate-700 dark:text-slate-200">Ciclo</p>
+                                <p className="text-[10px] text-slate-400">
+                                    Todo en orden ✨
+                                </p>
+                                <div className="w-full bg-pink-100 h-1.5 rounded-full mt-2">
+                                    <div className="bg-pink-400 h-1.5 rounded-full" style={{ width: '100%' }}></div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Goals Card */}
                     <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow">
