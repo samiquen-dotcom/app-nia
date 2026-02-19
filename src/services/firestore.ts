@@ -109,7 +109,7 @@ export const FirestoreService = {
                 const financeDoc = await transaction.get(financeRef);
                 const financeData = financeDoc.exists() ? financeDoc.data() : { accounts: [], monthStats: {} };
 
-                let accounts = (financeData.accounts && financeData.accounts.length > 0)
+                let accounts: FinanceAccount[] = (financeData.accounts && financeData.accounts.length > 0)
                     ? financeData.accounts as FinanceAccount[]
                     : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS)); // Clone deeply to avoid ref issues
                 let monthStats = (financeData.monthStats || {}) as Record<string, MonthStats>;
@@ -175,7 +175,7 @@ export const FirestoreService = {
                 if (!financeDoc.exists()) throw "Finance doc missing";
 
                 const financeData = financeDoc.data();
-                let accounts = (financeData.accounts && financeData.accounts.length > 0)
+                let accounts: FinanceAccount[] = (financeData.accounts && financeData.accounts.length > 0)
                     ? financeData.accounts as FinanceAccount[]
                     : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
                 let monthStats = (financeData.monthStats || {}) as Record<string, MonthStats>;

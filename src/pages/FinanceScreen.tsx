@@ -246,7 +246,7 @@ export const FinanceScreen: React.FC = () => {
 
         setIsRecalculating(true);
         try {
-            const res = await FirestoreService.recalculateFinances(user.uid);
+            await FirestoreService.recalculateFinances(user.uid);
             // Force update local data
             // We need to fetch updated data properly or trust the result
             const updated = await FirestoreService.getFeatureData(user.uid, 'finance');
