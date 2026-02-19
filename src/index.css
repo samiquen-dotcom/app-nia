@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+/* Enable class-based dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #ffd6e0;
+  --color-primary-dark: #eec0ca;
+  --color-secondary: #ffe5ec;
+  --color-accent: #9d8189;
+  --color-background-light: #f8f5f6;
+  --color-background-dark: #230f14;
+  --color-lavender: #e6e6fa;
+  --color-text-main: #4a4a4a;
+
+  --font-display: "Plus Jakarta Sans", sans-serif;
+
+  --radius-DEFAULT: 1rem;
+  --radius-lg: 2rem;
+  --radius-xl: 3rem;
+  --radius-full: 9999px;
+}
+
+@layer base {
+  body {
+    @apply bg-background-light text-text-main font-display antialiased;
+  }
+
+  html.dark body {
+    background-color: #1a0d10;
+    color: #f5e8eb;
+  }
+}
+
+/* ─── Dark mode ─────────────────────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+}
+
+/* Custom scrollbar hiding */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
