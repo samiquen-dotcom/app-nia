@@ -62,44 +62,48 @@ export const DebtsScreen: React.FC = () => {
     const handleSave = async () => {
         if (!user) return;
 
-        // Validation with alerts
-        if (!title.trim()) { alert('Falta el título'); return; }
-        if (!amount || parseFloat(amount) <= 0) { alert('Monto inválido'); return; }
+        // Validation
+        const t = title.trim();
+        if (!t) { alert('Falta el título'); return; }
+
+        const amt = parseFloat(amount);
+        if (!amount || isNaN(amt) || amt <= 0) { alert('Monto inválido'); return; }
+
         if (!dueDate) { alert('Falta la fecha'); return; }
 
-        const newDebt: Debt = {
-            id: editingDebt ? editingDebt.id : Date.now().toString(),
-            title: title.trim(),
-            amount: parseFloat(amount),
-            type,
-            frequency: type === 'recurring' ? frequency : undefined,
-            dueDate
-        };
+        try {
+            const newDebt: Debt = {
+                id: editingDebt ? editingDebt.id : Date.now().toString(),
+                title: t,
+                amount: amt,
+                type,
+                frequency: type === 'recurring' ? frequency : undefined,
+                dueDate
+            };
 
-        // Use functional state update to ensure we have the latest list
-        setDebts(prevDebts => {
-            let updated = [...prevDebts];
+            // Calculate new list
+            let updatedDebts = [...debts];
             if (editingDebt) {
-                updated = updated.map(d => d.id === editingDebt.id ? newDebt : d);
+                updatedDebts = updatedDebts.map(d => d.id === editingDebt.id ? newDebt : d);
             } else {
-                updated.push(newDebt);
+                updatedDebts.push(newDebt);
             }
+            updatedDebts.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-            // Sort
-            updated.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+            // 1. Update UI immediately
+            setDebts(updatedDebts);
+            closeModal();
 
-            // Save to Firestore within the update cycle
+            // 2. Save to Cloud
             const ref = doc(db, `users/${user.uid}/features`, 'debts');
-            setDoc(ref, { items: updated }, { merge: true }).catch(e => {
-                console.error("Error saving debt:", e);
-                alert("Error al guardar: " + e);
-                loadDebts();
-            });
+            await setDoc(ref, { items: updatedDebts }, { merge: true });
 
-            return updated;
-        });
-
-        closeModal();
+        } catch (e) {
+            console.error("Error saving debt:", e);
+            alert("Error al guardar: " + e);
+            // Revert state if save fails
+            loadDebts();
+        }
     };
 
     const handlePay = async (debt: Debt) => {
