@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { FirestoreService } from '../services/firestore';
 import { auth } from '../firebase';
 import { getPredictions } from '../utils/cycleLogic';
+import { useTheme } from '../context/ThemeContext';
 import type { FinanceData, GymData, FoodData, GoalsData, PeriodData } from '../types';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -44,6 +45,7 @@ export const HomeScreen: React.FC = () => {
         calories: 0, gymDone: false, gymStreak: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0,
     });
     const { user } = useAuth();
+    const { isDark, toggleTheme } = useTheme();
     const displayName = user?.displayName ? user.displayName.split(' ')[0] : 'Nia';
     const photoURL = user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayName}&backgroundColor=ffd6e0`;
 
@@ -177,6 +179,15 @@ export const HomeScreen: React.FC = () => {
                                         <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{displayName}</p>
                                         <p className="text-[10px] text-slate-400">Premium Member ✨</p>
                                     </div>
+                                    <button
+                                        onClick={toggleTheme}
+                                        className="w-full text-left px-3 py-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl flex items-center gap-2 transition-colors mb-1"
+                                    >
+                                        <span className={`material-symbols-outlined text-lg ${isDark ? 'text-yellow-300' : 'text-slate-400'}`}>
+                                            {isDark ? 'light_mode' : 'dark_mode'}
+                                        </span>
+                                        {isDark ? 'Modo Claro' : 'Modo Oscuro'}
+                                    </button>
                                     <button
                                         onClick={() => signOut(auth)}
                                         className="w-full text-left px-3 py-2.5 text-sm text-rose-500 font-bold hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl flex items-center gap-2 transition-colors"

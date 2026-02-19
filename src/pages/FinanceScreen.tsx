@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useFeatureData } from '../hooks/useFeatureData';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService } from '../services/firestore';
@@ -238,28 +239,7 @@ export const FinanceScreen: React.FC = () => {
     const selectCat = (emoji: string, label: string) => {
         setTxCat(label); setTxCatEmoji(emoji);
     };
-    const [isRecalculating, setIsRecalculating] = useState(false);
-
-    const handleRecalculate = async () => {
-        if (!user || isRecalculating) return;
-        // if (!confirm('¿Recalcular balances? Esto corregirá cualquier error de sumas.')) return; // remove confirm for smoother UX if preferred, or keep it. Let's keep it to verify intent.
-
-        setIsRecalculating(true);
-        try {
-            await FirestoreService.recalculateFinances(user.uid);
-            // Force update local data
-            // We need to fetch updated data properly or trust the result
-            const updated = await FirestoreService.getFeatureData(user.uid, 'finance');
-            if (updated) setData(updated as FinanceData);
-
-            // alert('¡Saldos corregidos! ✨'); 
-        } catch (e) {
-            console.error(e);
-            alert('Error. Intenta de nuevo.');
-        } finally {
-            setIsRecalculating(false);
-        }
-    };
+    const navigate = useNavigate();
 
     // ── Render ────────────────────────────────────────────────────────────────
     return (
@@ -269,10 +249,9 @@ export const FinanceScreen: React.FC = () => {
             <div className="px-6 pt-12 pb-2 flex items-center justify-between">
                 <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">Finanzas 💛</h1>
                 <div className="flex gap-2">
-                    {/* Sync Button */}
-                    <button onClick={handleRecalculate} disabled={isRecalculating}
-                        className="w-9 h-9 rounded-full bg-white dark:bg-[#2d1820] border border-slate-100 dark:border-[#5a2b35]/30 shadow-sm flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50">
-                        <span className={`material-symbols-outlined text-base text-slate-500 dark:text-slate-300 ${isRecalculating ? 'animate-spin' : ''}`}>sync</span>
+                    {/* Debts Button */}
+                    <button onClick={() => navigate('/debts')} className="w-9 h-9 rounded-full bg-white dark:bg-[#2d1820] border border-slate-100 dark:border-[#5a2b35]/30 shadow-sm flex items-center justify-center hover:scale-110 transition-transform">
+                        <span className="material-symbols-outlined text-base text-pink-400">receipt_long</span>
                     </button>
 
                     {txList.length > 0 && (
@@ -479,7 +458,7 @@ export const FinanceScreen: React.FC = () => {
             {showAdd && (
                 <div className="fixed inset-0 z-[60] flex flex-col justify-end">
                     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowAdd(false)} />
-                    <div className="relative bg-white dark:bg-[#231218] rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto">
+                    <div className="relative w-full bg-white dark:bg-[#231218] rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto">
 
                         {/* Handle */}
                         <div className="flex justify-center pt-3 pb-1">
@@ -617,7 +596,7 @@ export const FinanceScreen: React.FC = () => {
 
             {/* ── Add Category Modal ───────────────────────────────────────────── */}
             {showAddCat && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6" onClick={() => setShowAddCat(false)}>
+                <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-6" onClick={() => setShowAddCat(false)}>
                     <div className="bg-white dark:bg-[#2d1820] rounded-3xl p-6 w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
                         <h2 className="font-extrabold text-slate-800 dark:text-slate-100 text-lg mb-4 text-center">Nueva categoría ✨</h2>
                         <div className="flex gap-2 mb-3">

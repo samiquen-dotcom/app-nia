@@ -28,6 +28,7 @@ export const Features = {
     FINANCE: 'finance',
     GYM: 'gym',
     FOOD: 'food',
+    DEBTS: 'debts',
     WELLNESS: 'wellness',
     PERIOD: 'period',
     GOALS: 'goals',

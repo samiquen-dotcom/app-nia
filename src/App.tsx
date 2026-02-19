@@ -9,6 +9,7 @@ import { GymScreen } from './pages/GymScreen';
 import { FoodScreen } from './pages/FoodScreen';
 import { WellnessScreen } from './pages/WellnessScreen';
 import { GoalsScreen } from './pages/GoalsScreen';
+import { DebtsScreen } from './pages/DebtsScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 
@@ -22,22 +23,23 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <ThemeProvider>
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LoginScreen />} />
-          <Route element={<Layout />}>
-            <Route path="/home" element={<ProtectedRoute><HomeScreen /></ProtectedRoute>} />
-            <Route path="/finance" element={<ProtectedRoute><FinanceScreen /></ProtectedRoute>} />
-            <Route path="/period" element={<ProtectedRoute><PeriodScreen /></ProtectedRoute>} />
-            <Route path="/gym" element={<ProtectedRoute><GymScreen /></ProtectedRoute>} />
-            <Route path="/food" element={<ProtectedRoute><FoodScreen /></ProtectedRoute>} />
-            <Route path="/wellness" element={<ProtectedRoute><WellnessScreen /></ProtectedRoute>} />
-            <Route path="/goals" element={<ProtectedRoute><GoalsScreen /></ProtectedRoute>} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<LoginScreen />} />
+            <Route element={<Layout />}>
+              <Route path="/home" element={<ProtectedRoute><HomeScreen /></ProtectedRoute>} />
+              <Route path="/finance" element={<ProtectedRoute><FinanceScreen /></ProtectedRoute>} />
+              <Route path="/period" element={<ProtectedRoute><PeriodScreen /></ProtectedRoute>} />
+              <Route path="/gym" element={<ProtectedRoute><GymScreen /></ProtectedRoute>} />
+              <Route path="/food" element={<ProtectedRoute><FoodScreen /></ProtectedRoute>} />
+              <Route path="/wellness" element={<ProtectedRoute><WellnessScreen /></ProtectedRoute>} />
+              <Route path="/goals" element={<ProtectedRoute><GoalsScreen /></ProtectedRoute>} />
+              <Route path="/debts" element={<ProtectedRoute><DebtsScreen /></ProtectedRoute>} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
