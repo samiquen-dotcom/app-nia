@@ -67,41 +67,39 @@ export const DebtsScreen: React.FC = () => {
         if (!amount || parseFloat(amount) <= 0) { alert('Monto inválido'); return; }
         if (!dueDate) { alert('Falta la fecha'); return; }
 
-        try {
-            const newDebt: Debt = {
-                id: editingDebt ? editingDebt.id : Date.now().toString(),
-                title: title.trim(),
-                amount: parseFloat(amount),
-                type,
-                frequency: type === 'recurring' ? frequency : undefined,
-                dueDate
-            };
+        const newDebt: Debt = {
+            id: editingDebt ? editingDebt.id : Date.now().toString(),
+            title: title.trim(),
+            amount: parseFloat(amount),
+            type,
+            frequency: type === 'recurring' ? frequency : undefined,
+            dueDate
+        };
 
-            let updatedDebts = [...debts];
+        // Use functional state update to ensure we have the latest list
+        setDebts(prevDebts => {
+            let updated = [...prevDebts];
             if (editingDebt) {
-                updatedDebts = updatedDebts.map(d => d.id === editingDebt.id ? newDebt : d);
+                updated = updated.map(d => d.id === editingDebt.id ? newDebt : d);
             } else {
-                updatedDebts.push(newDebt);
+                updated.push(newDebt);
             }
 
             // Sort
-            updatedDebts.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+            updated.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-            // 1. Update local state immediately (Optimistic UI)
-            setDebts(updatedDebts);
-            closeModal();
-
-            // 2. Save to Firestore
-            // Use hardcoded 'debts' to ensure consistency
+            // Save to Firestore within the update cycle
             const ref = doc(db, `users/${user.uid}/features`, 'debts');
-            await setDoc(ref, { items: updatedDebts }, { merge: true });
+            setDoc(ref, { items: updated }, { merge: true }).catch(e => {
+                console.error("Error saving debt:", e);
+                alert("Error al guardar: " + e);
+                loadDebts();
+            });
 
-        } catch (e) {
-            console.error("Error saving debt:", e);
-            alert("Error al guardar: " + e);
-            // Revert on error if needed, but alerting is usually enough for simple apps
-            loadDebts();
-        }
+            return updated;
+        });
+
+        closeModal();
     };
 
     const handlePay = async (debt: Debt) => {
