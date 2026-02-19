@@ -35,6 +35,19 @@ export interface FinanceData {
     monthStats?: Record<string, MonthStats>; // YYYY-MM -> stats
 }
 
+export interface Debt {
+    id: string;
+    title: string;
+    amount: number;
+    type: 'unique' | 'recurring';
+    frequency?: 'weekly' | 'biweekly' | 'monthly';
+    dueDate: string; // ISO date string YYYY-MM-DD
+}
+
+export interface DebtsData {
+    items: Debt[];
+}
+
 // ─── Gym ──────────────────────────────────────────────────────────────────────
 export interface GymEntry {
     date: string;     // YYYY-MM-DD

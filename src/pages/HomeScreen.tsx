@@ -5,11 +5,11 @@ import { signOut } from 'firebase/auth';
 import { MoodTracker } from '../components/MoodTracker';
 import { CycleWidget } from '../components/CycleWidget';
 import { useAuth } from '../context/AuthContext';
-import { FirestoreService } from '../services/firestore';
+import { FirestoreService, Features } from '../services/firestore';
 import { auth } from '../firebase';
 import { getPredictions } from '../utils/cycleLogic';
 import { useTheme } from '../context/ThemeContext';
-import type { FinanceData, GymData, FoodData, GoalsData, PeriodData } from '../types';
+import type { FinanceData, GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt } from '../types';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 const todayDate = () => new Date().toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
@@ -49,6 +49,10 @@ export const HomeScreen: React.FC = () => {
     const displayName = user?.displayName ? user.displayName.split(' ')[0] : 'Nia';
     const photoURL = user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayName}&backgroundColor=ffd6e0`;
 
+    // Popup state
+    const [pendingDebts, setPendingDebts] = useState<Debt[]>([]);
+    const [showDebtModal, setShowDebtModal] = useState(false);
+
     // Pick a stable affirmation for today (changes daily)
     const affirmation = AFFIRMATIONS[new Date().getDate() % AFFIRMATIONS.length];
 
@@ -64,17 +68,36 @@ export const HomeScreen: React.FC = () => {
         const todayDateStr = todayDate();
 
         Promise.all([
-            FirestoreService.getFeatureData(user.uid, 'finance'),
-            FirestoreService.getFeatureData(user.uid, 'gym'),
-            FirestoreService.getFeatureData(user.uid, 'food'),
-            FirestoreService.getFeatureData(user.uid, 'goals'),
-            FirestoreService.getFeatureData(user.uid, 'period')
-        ]).then(([finRaw, gymRaw, foodRaw, goalsRaw, periodRaw]) => {
+            FirestoreService.getFeatureData(user.uid, Features.FINANCE),
+            FirestoreService.getFeatureData(user.uid, Features.GYM),
+            FirestoreService.getFeatureData(user.uid, Features.FOOD),
+            FirestoreService.getFeatureData(user.uid, Features.GOALS),
+            FirestoreService.getFeatureData(user.uid, Features.PERIOD),
+            FirestoreService.getFeatureData(user.uid, Features.DEBTS)
+        ]).then(([finRaw, gymRaw, foodRaw, goalsRaw, periodRaw, debtsRaw]) => {
             const fin = finRaw as FinanceData | null;
             const gym = gymRaw as GymData | null;
             const food = foodRaw as FoodData | null;
             const goals = goalsRaw as GoalsData | null;
             const period = periodRaw as PeriodData | null;
+            const debtsData = debtsRaw as DebtsData | null;
+
+            // Check for debts due today or overdue
+            if (debtsData?.items) {
+                const now = new Date();
+                now.setHours(0, 0, 0, 0); // Start of today
+
+                const upcoming = debtsData.items.filter(d => {
+                    const due = new Date(d.dueDate + 'T00:00:00');
+                    // Due today (same date) or in the past (overdue)
+                    return due <= now;
+                });
+
+                if (upcoming.length > 0) {
+                    setPendingDebts(upcoming);
+                    setShowDebtModal(true);
+                }
+            }
 
             // Today's calories from Food
             const todayFood = food?.days?.find(d => d.date === today);
@@ -229,6 +252,62 @@ export const HomeScreen: React.FC = () => {
                         <CycleWidget />
                     </section>
                 )}
+
+            {/* ── Debts Alert Modal ─────────────────────────────────────────────── */}
+            {showDebtModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white dark:bg-[#2d1820] w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in zoom-in-95 duration-300 relative overflow-hidden">
+                        {/* Decorative background blobs */}
+                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-rose-100 dark:bg-rose-900/20 rounded-full blur-2xl"></div>
+                        <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-indigo-100 dark:bg-indigo-900/20 rounded-full blur-2xl"></div>
+
+                        <div className="relative z-10 flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-rose-50 dark:bg-rose-900/30 rounded-full flex items-center justify-center mb-4 animate-bounce">
+                                <span className="text-4xl">💸</span>
+                            </div>
+
+                            <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 mb-2">¡Ojo al piojo! 🐰</h2>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 px-4">
+                                Tienes <strong className="text-rose-500">{pendingDebts.length}</strong> {pendingDebts.length === 1 ? 'pago pendiente' : 'pagos pendientes'} para hoy o vencidos.
+                            </p>
+
+                            <div className="w-full space-y-3 mb-6 max-h-[40vh] overflow-y-auto pr-1">
+                                {pendingDebts.map(debt => (
+                                    <div key={debt.id} className="bg-slate-50 dark:bg-[#1a0d10] p-3 rounded-2xl flex items-center justify-between border border-slate-100 dark:border-[#5a2b35]/50">
+                                        <div className="flex items-center gap-3 text-left">
+                                            <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                                            <div>
+                                                <p className="font-bold text-sm text-slate-700 dark:text-slate-200">{debt.title}</p>
+                                                <p className="text-[10px] text-rose-500 font-bold">
+                                                    {new Date(debt.dueDate + 'T23:59:59') < new Date() ? '¡Vencido!' : 'Vence hoy'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className="font-extrabold text-slate-800 dark:text-slate-100">
+                                            ${debt.amount.toLocaleString()}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex gap-3 w-full">
+                                <button
+                                    onClick={() => setShowDebtModal(false)}
+                                    className="flex-1 py-3.5 rounded-2xl font-bold text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-sm"
+                                >
+                                    Más tarde
+                                </button>
+                                <button
+                                    onClick={() => navigate('/debts')}
+                                    className="flex-1 py-3.5 rounded-2xl font-bold text-white bg-gradient-to-r from-rose-400 to-pink-500 shadow-lg shadow-rose-200 dark:shadow-none hover:scale-105 transition-transform text-sm"
+                                >
+                                    Ir a pagar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── Summary Grid ───────────────────────────────────────────────────── */}
             <section className="px-6 py-4">
