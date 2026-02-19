@@ -1,9 +1,11 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MoodTracker } from '../components/MoodTracker';
 import { CycleWidget } from '../components/CycleWidget';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService } from '../services/firestore';
+import { getPredictions } from '../utils/cycleLogic';
 import type { FinanceData, GymData, FoodData, GoalsData, PeriodData } from '../types';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -20,6 +22,7 @@ interface DashboardData {
         isActive: boolean;
         isDayMissing: boolean;
         day: number;
+        daysUntil: number;
     };
 }
 
@@ -72,7 +75,7 @@ export const HomeScreen: React.FC = () => {
             const todayFood = food?.days?.find(d => d.date === today);
             let calories = 0;
             if (todayFood) {
-                Object.values(todayFood.meals).forEach(items =>
+                Object.values(todayFood.meals).forEach((items: any[]) =>
                     items.forEach(i => { calories += i.calories; })
                 );
             }
@@ -96,31 +99,43 @@ export const HomeScreen: React.FC = () => {
                 const isActive = period.isPeriodActive === true;
                 let isDayMissing = false;
                 let day = 0;
+                let daysUntil = 28; // Default
 
-                if (isActive && period.cycleStartDate) {
-                    // Check missing logic (simplified from widget)
-                    const start = new Date(period.cycleStartDate + 'T00:00:00');
-                    const now = new Date();
-                    now.setHours(0, 0, 0, 0);
+                if (period.cycleStartDate) {
+                    // Calculate days until next period
+                    const predictions = getPredictions(period.cycleStartDate, period.cycleLength);
+                    if (predictions.nextPeriod) {
+                        const next = new Date(predictions.nextPeriod);
+                        const now = new Date();
+                        const timeDiff = next.getTime() - now.getTime();
+                        daysUntil = Math.max(0, Math.ceil(timeDiff / (1000 * 3600 * 24)));
+                    }
 
-                    // Calc current day number
-                    day = Math.floor((now.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
+                    if (isActive) {
+                        // Check missing logic (simplified from widget)
+                        const start = new Date(period.cycleStartDate + 'T00:00:00');
+                        const now = new Date();
+                        now.setHours(0, 0, 0, 0);
 
-                    // Iterate to find missing
-                    for (let i = 0; i < 40; i++) {
-                        const current = new Date(start);
-                        current.setDate(start.getDate() + i);
-                        if (current > now) break;
+                        // Calc current day number
+                        day = Math.floor((now.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
 
-                        const dStr = current.toISOString().split('T')[0];
-                        if (!period.dailyEntries?.[dStr]) {
-                            isDayMissing = true;
-                            break;
+                        // Iterate to find missing
+                        for (let i = 0; i < 40; i++) {
+                            const current = new Date(start);
+                            current.setDate(start.getDate() + i);
+                            if (current > now) break;
+
+                            const dStr = current.toISOString().split('T')[0];
+                            if (!period.dailyEntries?.[dStr]) {
+                                isDayMissing = true;
+                                break;
+                            }
                         }
                     }
                 }
 
-                periodStatus = { isActive, isDayMissing, day };
+                periodStatus = { isActive, isDayMissing, day, daysUntil };
             }
 
             setDashboard({ calories, gymDone, gymStreak, todaySpent, goalsTotal, goalsDone, periodStatus });
@@ -161,12 +176,15 @@ export const HomeScreen: React.FC = () => {
             </section>
 
             {/* ── Cycle Widget (Banner Mode) ─────────────────────────────────────── */}
-            {/* Show only if needed: Active & Missing OR Inactive (Prediction) */}
-            {(!dashboard.periodStatus?.isActive || (dashboard.periodStatus.isActive && dashboard.periodStatus.isDayMissing)) && (
-                <section className="px-6 py-4 pb-0">
-                    <CycleWidget />
-                </section>
-            )}
+            {/* Show only if Urgent: Active & Missing OR Inactive & <= 2 days */}
+            {dashboard.periodStatus && (
+                (dashboard.periodStatus.isActive && dashboard.periodStatus.isDayMissing) ||
+                (!dashboard.periodStatus.isActive && dashboard.periodStatus.daysUntil <= 2)
+            ) && (
+                    <section className="px-6 py-4 pb-0">
+                        <CycleWidget />
+                    </section>
+                )}
 
             {/* ── Summary Grid ───────────────────────────────────────────────────── */}
             <section className="px-6 py-4">
@@ -174,8 +192,8 @@ export const HomeScreen: React.FC = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
 
-                    {/* Cycle Summary Card (If Logged & Active) */}
-                    {dashboard.periodStatus?.isActive && !dashboard.periodStatus.isDayMissing && (
+                    {/* Cycle Summary Card */}
+                    {dashboard.periodStatus && dashboard.periodStatus.isActive && !dashboard.periodStatus.isDayMissing && (
                         <div
                             onClick={() => navigate('/period')}
                             className="bg-gradient-to-br from-pink-50 to-white dark:from-[#3a2028] dark:to-[#2d1820] p-4 rounded-3xl shadow-sm border border-pink-100 dark:border-[#5a2b35] flex flex-col justify-between hover:shadow-md transition-all cursor-pointer group"
@@ -190,11 +208,14 @@ export const HomeScreen: React.FC = () => {
                             </div>
                             <div>
                                 <p className="font-bold text-slate-700 dark:text-slate-200">Ciclo</p>
-                                <p className="text-[10px] text-slate-400">
+                                <p className="text-[10px] text-slate-400 font-medium">
                                     Todo en orden ✨
                                 </p>
-                                <div className="w-full bg-pink-100 h-1.5 rounded-full mt-2">
-                                    <div className="bg-pink-400 h-1.5 rounded-full" style={{ width: '100%' }}></div>
+                                <div className="w-full bg-pink-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                                    <div
+                                        className="bg-pink-400 h-1.5 rounded-full"
+                                        style={{ width: '100%' }}
+                                    ></div>
                                 </div>
                             </div>
                         </div>
@@ -286,3 +307,4 @@ export const HomeScreen: React.FC = () => {
         </div>
     );
 };
+

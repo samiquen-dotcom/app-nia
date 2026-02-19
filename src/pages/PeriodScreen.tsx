@@ -122,11 +122,27 @@ export const PeriodScreen: React.FC = () => {
 
     const handleStartPeriod = async () => {
         // One-tap start
+
+        // Auto-update Cycle Length if previous history exists
+        let newCycleLength = data.cycleLength;
+        if (data.cycleStartDate) {
+            const prevStart = new Date(data.cycleStartDate + 'T00:00:00');
+            const newStart = new Date(today + 'T00:00:00');
+            const diffDays = Math.floor((newStart.getTime() - prevStart.getTime()) / (1000 * 3600 * 24));
+
+            // Only update if it's a reasonable cycle length (e.g., missed logging shouldn't ruin average)
+            if (diffDays >= 21 && diffDays <= 45) {
+                // Weighted average: 70% history, 30% new
+                newCycleLength = Math.round((data.cycleLength * 0.7) + (diffDays * 0.3));
+            }
+        }
+
         // Set state first for immediate UI feedback
         // Then call save
         await save({
             cycleStartDate: today,
-            isPeriodActive: true
+            isPeriodActive: true,
+            cycleLength: newCycleLength // Save updated length
         });
 
         // Auto open log
