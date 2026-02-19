@@ -22,6 +22,7 @@ const DEFAULT_ACCOUNTS: FinanceAccount[] = [
     { id: 'daviplata', name: 'Daviplata', initialBalance: 0, balance: 0 },
     { id: 'davivienda', name: 'Davivienda', initialBalance: 0, balance: 0 },
     { id: 'bancolombia', name: 'Bancolombia', initialBalance: 0, balance: 0 },
+    { id: 'bolsillo', name: 'Bolsillo', initialBalance: 0, balance: 0 },
 ];
 
 export const Features = {

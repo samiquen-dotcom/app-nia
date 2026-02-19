@@ -12,6 +12,7 @@ const ACCOUNT_META: Record<string, { gradient: string; textColor: string; badge:
     daviplata: { gradient: 'from-fuchsia-200 to-pink-300', textColor: 'text-pink-900', badge: 'bg-white/50 text-pink-900', emoji: '🟣' },
     davivienda: { gradient: 'from-rose-200 to-red-300', textColor: 'text-rose-900', badge: 'bg-white/50 text-rose-900', emoji: '🔴' },
     bancolombia: { gradient: 'from-yellow-100 to-amber-200', textColor: 'text-amber-900', badge: 'bg-white/50 text-amber-900', emoji: '💛' },
+    bolsillo: { gradient: 'from-sky-200 to-cyan-300', textColor: 'text-sky-900', badge: 'bg-white/50 text-sky-900', emoji: '👖' },
 };
 
 const DEFAULT_ACCOUNTS: FinanceAccount[] = [
@@ -20,6 +21,7 @@ const DEFAULT_ACCOUNTS: FinanceAccount[] = [
     { id: 'daviplata', name: 'Daviplata', initialBalance: 0, balance: 0 },
     { id: 'davivienda', name: 'Davivienda', initialBalance: 0, balance: 0 },
     { id: 'bancolombia', name: 'Bancolombia', initialBalance: 0, balance: 0 },
+    { id: 'bolsillo', name: 'Bolsillo', initialBalance: 0, balance: 0 },
 ];
 
 const EXPENSE_CATS: CustomCategory[] = [
