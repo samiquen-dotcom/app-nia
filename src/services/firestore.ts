@@ -16,6 +16,14 @@ import {
 } from 'firebase/firestore';
 import type { Transaction as Trade, FinanceAccount, MonthStats } from '../types'; // Renamed to avoid collision with Firestore Transaction
 
+const DEFAULT_ACCOUNTS: FinanceAccount[] = [
+    { id: 'nequi', name: 'Nequi', initialBalance: 0, balance: 0 },
+    { id: 'efectivo', name: 'Efectivo', initialBalance: 0, balance: 0 },
+    { id: 'daviplata', name: 'Daviplata', initialBalance: 0, balance: 0 },
+    { id: 'davivienda', name: 'Davivienda', initialBalance: 0, balance: 0 },
+    { id: 'bancolombia', name: 'Bancolombia', initialBalance: 0, balance: 0 },
+];
+
 export const Features = {
     FINANCE: 'finance',
     GYM: 'gym',
@@ -101,7 +109,9 @@ export const FirestoreService = {
                 const financeDoc = await transaction.get(financeRef);
                 const financeData = financeDoc.exists() ? financeDoc.data() : { accounts: [], monthStats: {} };
 
-                let accounts = (financeData.accounts || []) as FinanceAccount[];
+                let accounts = (financeData.accounts && financeData.accounts.length > 0)
+                    ? financeData.accounts as FinanceAccount[]
+                    : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS)); // Clone deeply to avoid ref issues
                 let monthStats = (financeData.monthStats || {}) as Record<string, MonthStats>;
 
                 // 2. Calcular nuevo balance de cuenta
@@ -165,7 +175,9 @@ export const FirestoreService = {
                 if (!financeDoc.exists()) throw "Finance doc missing";
 
                 const financeData = financeDoc.data();
-                let accounts = (financeData.accounts || []) as FinanceAccount[];
+                let accounts = (financeData.accounts && financeData.accounts.length > 0)
+                    ? financeData.accounts as FinanceAccount[]
+                    : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
                 let monthStats = (financeData.monthStats || {}) as Record<string, MonthStats>;
 
                 // Revertir balance
@@ -265,5 +277,61 @@ export const FirestoreService = {
         });
         await batch.commit();
         console.log("Migration complete!");
-    }
+    },
+
+    // Recalcular todo desde cero (Fix de consistencia)
+    recalculateFinances: async (userId: string) => {
+        try {
+            // 1. Resetear estado local
+            // Usamos DEFAULT_ACCOUNTS para reiniciar balances a 0 pero mantenemos los IDs si hubiera nuevos
+            // Para simplificar, reseteamos a los defaults puros con balance 0
+            const accounts = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+            const monthStats: Record<string, MonthStats> = {};
+
+            // 2. Traer TODAS las transacciones
+            const txRef = collection(db, `users/${userId}/features/${Features.FINANCE}/transactions`);
+            const snap = await getDocs(txRef);
+
+            // 3. Re-procesar una por una
+            snap.forEach(doc => {
+                const tx = doc.data() as Trade;
+
+                // Balance
+                const accIndex = accounts.findIndex((a: any) => a.id === tx.accountId);
+                if (accIndex >= 0) {
+                    const acc = accounts[accIndex];
+                    if (tx.type === 'income') acc.balance += tx.amount;
+                    else acc.balance -= tx.amount;
+                }
+
+                // Stats
+                const monthKey = tx.dateISO.slice(0, 7);
+                if (!monthStats[monthKey]) monthStats[monthKey] = { income: 0, expense: 0, categories: {} };
+
+                if (tx.type === 'income') {
+                    monthStats[monthKey].income += tx.amount;
+                } else {
+                    monthStats[monthKey].expense += tx.amount;
+                    const cat = tx.category;
+                    const catStats = monthStats[monthKey].categories[cat] || { total: 0, emoji: tx.emoji };
+                    catStats.total += tx.amount;
+                    catStats.emoji = tx.emoji;
+                    monthStats[monthKey].categories[cat] = catStats;
+                }
+            });
+
+            // 4. Guardar corrección
+            const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);
+            await setDoc(financeRef, {
+                accounts,
+                monthStats
+            }, { merge: true });
+
+            return { accounts, monthStats };
+
+        } catch (e) {
+            console.error("Recalculate failed:", e);
+            throw e;
+        }
+    },
 };
