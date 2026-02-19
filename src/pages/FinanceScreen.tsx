@@ -283,19 +283,19 @@ export const FinanceScreen: React.FC = () => {
                     <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Mis cuentas</h3>
                     <span className="text-[10px] text-slate-400">saldo actual</span>
                 </div>
-                <div className="flex gap-3 px-6 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="grid grid-cols-2 gap-3 px-6 sm:grid-cols-3 md:grid-cols-5">
                     {accounts.map(acc => {
                         const meta = ACCOUNT_META[acc.id];
                         return (
                             <div
                                 key={acc.id}
-                                className={`flex-shrink-0 bg-gradient-to-br ${meta.gradient} rounded-2xl p-4 w-36 shadow-lg transition-all`}
+                                className={`bg-gradient-to-br ${meta.gradient} rounded-2xl p-4 shadow-lg transition-all hover:scale-105`}
                             >
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xl">{meta.emoji}</span>
                                 </div>
                                 <p className={`text-xs font-bold ${meta.textColor} opacity-80 mb-0.5`}>{acc.name}</p>
-                                <p className={`text-lg font-extrabold ${meta.textColor} leading-tight`}>{fmt(acc.balance ?? acc.initialBalance)}</p>
+                                <p className={`text-lg font-extrabold ${meta.textColor} leading-tight truncate`}>{fmt(acc.balance ?? acc.initialBalance)}</p>
                             </div>
                         );
                     })}
