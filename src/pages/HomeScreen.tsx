@@ -1,10 +1,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
 import { MoodTracker } from '../components/MoodTracker';
 import { CycleWidget } from '../components/CycleWidget';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService } from '../services/firestore';
+import { auth } from '../firebase';
 import { getPredictions } from '../utils/cycleLogic';
 import type { FinanceData, GymData, FoodData, GoalsData, PeriodData } from '../types';
 
@@ -37,6 +39,7 @@ const AFFIRMATIONS = [
 export const HomeScreen: React.FC = () => {
     const navigate = useNavigate();
     const [dateString, setDateString] = useState('');
+    const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [dashboard, setDashboard] = useState<DashboardData>({
         calories: 0, gymDone: false, gymStreak: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0,
     });
@@ -152,8 +155,38 @@ export const HomeScreen: React.FC = () => {
             <header className="px-6 pt-12 pb-4 flex flex-col gap-1">
                 <div className="flex items-center justify-between">
                     <h2 className="text-accent text-sm font-semibold tracking-wide uppercase capitalize">{dateString}</h2>
-                    <div className="h-10 w-10 rounded-full bg-white p-1 shadow-sm overflow-hidden border-2 border-primary">
-                        <img alt="Profile" className="h-full w-full object-cover rounded-full" src={photoURL} />
+
+                    {/* Profile Menu */}
+                    <div className="relative z-50">
+                        <div
+                            onClick={() => setShowProfileMenu(!showProfileMenu)}
+                            className="h-10 w-10 rounded-full bg-white p-1 shadow-sm overflow-hidden border-2 border-primary cursor-pointer active:scale-95 transition-transform"
+                        >
+                            <img alt="Profile" className="h-full w-full object-cover rounded-full" src={photoURL} />
+                        </div>
+
+                        {/* Dropdown */}
+                        {showProfileMenu && (
+                            <>
+                                <div
+                                    className="fixed inset-0 z-40"
+                                    onClick={() => setShowProfileMenu(false)}
+                                ></div>
+                                <div className="absolute right-0 top-12 bg-white dark:bg-[#3a2028] shadow-xl rounded-2xl p-2 z-50 min-w-[160px] border border-pink-100 dark:border-[#5a2b35] animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="px-3 py-2 border-b border-pink-50 dark:border-white/10 mb-1">
+                                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{displayName}</p>
+                                        <p className="text-[10px] text-slate-400">Premium Member ✨</p>
+                                    </div>
+                                    <button
+                                        onClick={() => signOut(auth)}
+                                        className="w-full text-left px-3 py-2.5 text-sm text-rose-500 font-bold hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl flex items-center gap-2 transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-lg">logout</span>
+                                        Cerrar Sesión
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
                 <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">Hola {displayName} ✨</h1>
