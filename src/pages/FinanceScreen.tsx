@@ -75,7 +75,19 @@ export const FinanceScreen: React.FC = () => {
         monthStats: {}
     });
 
-    const accounts = data.accounts?.length > 0 ? data.accounts : DEFAULT_ACCOUNTS;
+    const accounts = useMemo(() => {
+        const current = data.accounts || [];
+        if (current.length === 0) return DEFAULT_ACCOUNTS;
+
+        // Merge missing defaults
+        const merged = [...current];
+        DEFAULT_ACCOUNTS.forEach(def => {
+            if (!merged.find(a => a.id === def.id)) {
+                merged.push(def);
+            }
+        });
+        return merged;
+    }, [data.accounts]);
     const customCats = data.customCategories ?? [];
 
     // Pagination data

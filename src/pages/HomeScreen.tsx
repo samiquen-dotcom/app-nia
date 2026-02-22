@@ -189,9 +189,9 @@ export const HomeScreen: React.FC = () => {
                     <div className="relative z-50">
                         <div
                             onClick={() => setShowProfileMenu(!showProfileMenu)}
-                            className="h-10 w-10 rounded-full bg-white p-1 shadow-sm overflow-hidden border-2 border-primary cursor-pointer active:scale-95 transition-transform"
+                            className="h-11 w-11 rounded-full shadow-sm overflow-hidden border-2 border-primary cursor-pointer active:scale-95 transition-transform"
                         >
-                            <img alt="Profile" className="h-full w-full object-cover rounded-full" src={photoURL} />
+                            <img alt="Profile" className="h-full w-full object-cover" src={photoURL} referrerPolicy="no-referrer" />
                         </div>
 
                         {/* Dropdown */}
