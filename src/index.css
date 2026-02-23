@@ -19,6 +19,12 @@
   --radius-lg: 2rem;
   --radius-xl: 3rem;
   --radius-full: 9999px;
+
+  --animate-float-coquette: float-coquette 3.5s infinite ease-in-out;
+  @keyframes float-coquette {
+    0%, 100% { transform: translateY(0) rotate(-4deg); }
+    50% { transform: translateY(-20px) rotate(4deg); }
+  }
 }
 
 @layer base {

@@ -71,9 +71,14 @@ export interface PeriodData {
 
 export interface DailyCycleEntry {
     date: string;
+    hasBled?: boolean; // Novedad: Sangrado?
+    moodEmoji?: string; // Novedad: emoji de ánimo
+    moodLabel?: string; // Novedad: nombre de ánimo
     flow?: 'light' | 'medium' | 'heavy';
     energy?: 'ahorro' | 'poco' | 'estable' | 'impulso' | 'tope';
     symptoms?: string[];
+    painLevel?: number; // 1-10
+    reliefMethods?: string[]; // ibuprofen, heat, tea, etc.
     notes?: string;
 }
 

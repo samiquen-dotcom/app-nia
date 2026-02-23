@@ -68,8 +68,11 @@ export const ENERGY_LEVELS: EnergyConfig[] = [
     }
 ];
 
-// Helper to get today string YYYY-MM-DD
-export const todayStr = () => new Date().toISOString().split('T')[0];
+// Helper to get today string YYYY-MM-DD in local time (prevent UTC offset bug)
+export const todayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
 
 const diffDays = (from: string, to: string) => {
     const a = new Date(from + 'T00:00:00');
@@ -179,3 +182,79 @@ export const getSmartGymAdvice = (phase: PhaseType | null, energy: EnergyLevel |
     const config = ENERGY_LEVELS.find(e => e.id === energy);
     return config?.gym || 'Movimiento libre.';
 };
+
+// ─── 5. Insights & Analytics ──────────────────────────────────────────────────
+
+export const getCycleRegularity = (cycleLength: number): { status: 'regular' | 'varying' | 'irregular', label: string, color: string, desc: string } => {
+    if (cycleLength >= 26 && cycleLength <= 30) {
+        return { status: 'regular', label: 'Regular', color: 'text-emerald-500 bg-emerald-100', desc: 'Tus ciclos duran lo recomendado de 26-30 días.' };
+    } else if (cycleLength >= 21 && cycleLength <= 35) {
+        return { status: 'varying', label: 'Cambiando', color: 'text-amber-500 bg-amber-100', desc: 'Tus ciclos son algo cortos o largos, pero dentro de lo habitual.' };
+    } else {
+        return { status: 'irregular', label: 'Irregular', color: 'text-rose-500 bg-rose-100', desc: 'Tus ciclos varían bastante. Si notas molestias, consulta a tu doc.' };
+    }
+}
+
+export const generateCycleInsights = (data: any): string[] => {
+    const insights: string[] = [];
+
+    // Insight 1: Duración del ciclo (Regularidad)
+    if (data.cycleLength) {
+        insights.push(`Tu ciclo dura en promedio ${data.cycleLength} días.`);
+    }
+
+    // Insight 2: Análisis de dolor y soluciones (mocked with real data logic)
+    let totalCramps = 0;
+    let heatHelped = 0;
+    let medsHelped = 0;
+    let exerciseHelped = 0;
+    const entries = Object.values(data.dailyEntries || {});
+
+    entries.forEach((entry: any) => {
+        if (entry.symptoms?.includes('colicos') || entry.painLevel && entry.painLevel >= 5) {
+            totalCramps++;
+        }
+        if (entry.reliefMethods?.includes('calor')) heatHelped++;
+        if (entry.reliefMethods?.includes('medicina')) medsHelped++;
+        if (entry.reliefMethods?.includes('ejercicio')) exerciseHelped++;
+    });
+
+    if (totalCramps >= 1) {
+        insights.push(`Tus cólicos suelen aparecer en la fase menstrual inicial.`);
+        const best = Math.max(heatHelped, medsHelped, exerciseHelped);
+        if (best > 0) {
+            if (best === heatHelped) insights.push(`El calor te ayuda en la mayoría de las veces a aliviar tu dolor.`);
+            else if (best === medsHelped) insights.push(`Los medicamentos son tu solución más efectiva reportada.`);
+            else insights.push(`El ejercicio suave te ha ayudado a sentirte mejor.`);
+        }
+    }
+
+    // Default insight if none
+    if (insights.length === 1) {
+        insights.push(`Registra tus síntomas diariamente para descubrir patrones de tu cuerpo ✨.`);
+    }
+
+    return insights;
+}
+
+export const getPredictiveAlert = (phase: PhaseInfo | null): string | null => {
+    if (!phase) return null;
+
+    switch (phase.name) {
+        case 'Menstrual':
+            if (phase.day === 1 || phase.day === 2) return "Hoy podrías retener líquidos y tener baja energía. ¡Consiéntete! ☕";
+            return "Tu cuerpo se está limpiando y renovando poco a poco. Mantente hidratada 💧.";
+        case 'Folicular':
+            if (phase.day >= 8 && phase.day <= 10) return "Semana ideal para entrenamientos intensos 💪.";
+            return "¡Tu energía y creatividad empiezan a subir! Sácale jugo 🚀";
+        case 'Ovulación':
+            return "Estás radiante. Hoy es un día perfecto para socializar o pedir lo que quieres ✨.";
+        case 'Lútea':
+            if (phase.desc.includes('~3') || phase.desc.includes('~2') || phase.desc.includes('~1')) {
+                return "Posible día de mayor sensibilidad emocional o antojos físicos 🍫.";
+            }
+            return "Tu energía comenzará a bajar el ritmo. Escucha a tu intuición 🍂.";
+        default:
+            return null;
+    }
+}

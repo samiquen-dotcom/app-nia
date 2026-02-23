@@ -1,17 +1,19 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { MoodTracker } from '../components/MoodTracker';
 import { CycleWidget } from '../components/CycleWidget';
+import { CycleDayModal } from '../components/CycleDayModal';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService, Features } from '../services/firestore';
 import { auth } from '../firebase';
-import { getPredictions } from '../utils/cycleLogic';
+import { getPredictions, calculatePhase, getPredictiveAlert } from '../utils/cycleLogic';
 import { useTheme } from '../context/ThemeContext';
 import type { FinanceData, GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt } from '../types';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()} -${String(now.getMonth() + 1).padStart(2, '0')} -${String(now.getDate()).padStart(2, '0')} `;
+};
 const todayDate = () => new Date().toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
 
 interface DashboardData {
@@ -27,6 +29,8 @@ interface DashboardData {
         day: number;
         daysUntil: number;
     };
+    predictiveAlert?: string | null;
+    pendingReviewDate?: string | null;
 }
 
 const AFFIRMATIONS = [
@@ -39,8 +43,12 @@ const AFFIRMATIONS = [
 
 export const HomeScreen: React.FC = () => {
     const navigate = useNavigate();
-    const [dateString, setDateString] = useState('');
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [refresh, setRefresh] = useState(0);
+
+    const dateString = new Date().toLocaleDateString('es-ES', {
+        weekday: 'long', day: 'numeric', month: 'long'
+    });
     const [dashboard, setDashboard] = useState<DashboardData>({
         calories: 0, gymDone: false, gymStreak: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0,
     });
@@ -56,11 +64,7 @@ export const HomeScreen: React.FC = () => {
     // Pick a stable affirmation for today (changes daily)
     const affirmation = AFFIRMATIONS[new Date().getDate() % AFFIRMATIONS.length];
 
-    useEffect(() => {
-        const date = new Date();
-        const options: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'short', day: 'numeric' };
-        setDateString(date.toLocaleDateString('es-ES', options));
-    }, []);
+
 
     useEffect(() => {
         if (!user) return;
@@ -127,13 +131,37 @@ export const HomeScreen: React.FC = () => {
 
             // Cycle Status Logic
             let periodStatus = undefined;
+            let predictiveAlert = null;
+            let pendingReviewDate = null;
+
             if (period) {
+                // Determine mandatory popup missing dates
+                const nowLocal = new Date();
+                const hour = nowLocal.getHours();
+
+                for (let i = 5; i >= 0; i--) {
+                    const checkD = new Date(nowLocal);
+                    checkD.setDate(nowLocal.getDate() - i);
+                    const dStr = `${checkD.getFullYear()}-${String(checkD.getMonth() + 1).padStart(2, '0')}-${String(checkD.getDate()).padStart(2, '0')}`;
+
+                    if (i === 0 && hour < 22) continue; // Si es hoy y es antes de las 10 PM, lo saltamos
+
+                    const entry = period.dailyEntries?.[dStr];
+                    if (!entry || !entry.moodLabel || entry.hasBled === undefined) {
+                        pendingReviewDate = dStr;
+                        break; // Se detiene en el más antiguo
+                    }
+                }
+
                 const isActive = period.isPeriodActive === true;
                 let isDayMissing = false;
                 let day = 0;
                 let daysUntil = 28; // Default
 
                 if (period.cycleStartDate) {
+                    const phase = calculatePhase(period.cycleStartDate, period.cycleLength || 28, period.periodLength || 5);
+                    predictiveAlert = getPredictiveAlert(phase);
+
                     // Calculate days until next period
                     const predictions = getPredictions(period.cycleStartDate, period.cycleLength);
                     if (predictions.nextPeriod) {
@@ -170,9 +198,10 @@ export const HomeScreen: React.FC = () => {
                 periodStatus = { isActive, isDayMissing, day, daysUntil };
             }
 
-            setDashboard({ calories, gymDone, gymStreak, todaySpent, goalsTotal, goalsDone, periodStatus });
+            setDashboard({ calories, gymDone, gymStreak, todaySpent, goalsTotal, goalsDone, periodStatus, predictiveAlert, pendingReviewDate });
+
         });
-    }, [user]);
+    }, [user, refresh]);
 
     const goalsProgress = dashboard.goalsTotal > 0
         ? Math.round((dashboard.goalsDone / dashboard.goalsTotal) * 100)
@@ -183,7 +212,10 @@ export const HomeScreen: React.FC = () => {
             {/* ── Header ─────────────────────────────────────────────────────────── */}
             <header className="px-6 pt-12 pb-4 flex flex-col gap-1">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-accent text-sm font-semibold tracking-wide uppercase capitalize">{dateString}</h2>
+                    <div className="flex items-center gap-3">
+                        <img src="/LOGO NIA.png" alt="Logo Nia" className="w-10 h-10 object-contain drop-shadow-sm" />
+                        <h2 className="text-accent text-sm font-extrabold tracking-wide uppercase capitalize">{dateString}</h2>
+                    </div>
 
                     {/* Profile Menu */}
                     <div className="relative z-50">
@@ -230,8 +262,17 @@ export const HomeScreen: React.FC = () => {
                 <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">Hola {displayName} ✨</h1>
             </header>
 
-            {/* ── Mood Tracker ───────────────────────────────────────────────────── */}
-            <MoodTracker />
+            {/* ── Mandatory Cycle Modal ──────────────────────────────────────────── */}
+            {dashboard.pendingReviewDate && (
+                <CycleDayModal
+                    date={dashboard.pendingReviewDate}
+                    requireWizard={true}
+                    onClose={() => {
+                        // After closing, we force a re-fetch so it pops up the NEXT missing day if any
+                        setRefresh(r => r + 1);
+                    }}
+                />
+            )}
 
             {/* ── Daily Affirmation ──────────────────────────────────────────────── */}
             <section className="px-6 py-2 pb-0">
@@ -245,6 +286,23 @@ export const HomeScreen: React.FC = () => {
                     </div>
                 </div>
             </section>
+
+            {/* ── Cycle Insight (Predictive Alert) ───────────────────────────────── */}
+            {dashboard.predictiveAlert && (
+                <section className="px-6 py-4 pb-0">
+                    <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-[#2a2035] dark:to-[#332038] rounded-3xl p-4 shadow-sm border border-indigo-100 dark:border-purple-900/40 flex items-start gap-4 transition-all">
+                        <div className="w-12 h-12 flex-shrink-0 bg-white dark:bg-black/20 rounded-full shadow-sm text-indigo-500 flex items-center justify-center">
+                            <span className="material-symbols-outlined text-xl">auto_awesome</span>
+                        </div>
+                        <div>
+                            <p className="text-[10px] uppercase font-black text-indigo-400 mb-0.5 tracking-wider">Tu Cuerpo Hoy</p>
+                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-snug">
+                                {dashboard.predictiveAlert}
+                            </p>
+                        </div>
+                    </div>
+                </section>
+            )}
 
             {/* ── Cycle Widget (Banner Mode) ─────────────────────────────────────── */}
             {/* Show only if Urgent: Active & Missing OR Inactive & <= 2 days */}
