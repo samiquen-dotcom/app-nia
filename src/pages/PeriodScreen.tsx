@@ -17,6 +17,7 @@ export const PeriodScreen: React.FC = () => {
     const [showDailyModal, setShowDailyModal] = useState(false);
     const [logDate, setLogDate] = useState(todayStr());
     const [isReadOnly, setIsReadOnly] = useState(false);
+    const [selectedStatsMonth, setSelectedStatsMonth] = useState<string>('all');
 
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -65,6 +66,51 @@ export const PeriodScreen: React.FC = () => {
         const entry = data.dailyEntries?.[dStr];
         return { entry, dStr };
     };
+
+    // --- Statistics Calculations ---
+    const dailyEntriesArr = Object.values(data.dailyEntries || {});
+    const availableStatsMonths = Array.from(new Set(dailyEntriesArr.map(e => e.date.substring(0, 7)))).sort().reverse();
+
+    const filteredEntries = selectedStatsMonth === 'all'
+        ? dailyEntriesArr
+        : dailyEntriesArr.filter(e => e.date.startsWith(selectedStatsMonth));
+
+    const totalLoggedDays = filteredEntries.length;
+
+    const moodCounts = filteredEntries.reduce((acc, curr) => {
+        if (curr.moodLabel && curr.moodEmoji) {
+            const key = `${curr.moodEmoji}|${curr.moodLabel}`;
+            acc[key] = (acc[key] || 0) + 1;
+        }
+        return acc;
+    }, {} as Record<string, number>);
+    const topMoodKey = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const topMood = topMoodKey ? topMoodKey.split('|') : null; // [emoji, label]
+
+    const symptomCounts = filteredEntries.reduce((acc, curr) => {
+        if (curr.symptoms && curr.symptoms.length > 0) {
+            curr.symptoms.forEach(s => {
+                acc[s] = (acc[s] || 0) + 1;
+            });
+        }
+        return acc;
+    }, {} as Record<string, number>);
+    const topSymptom = Object.entries(symptomCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    // Pain calc
+    const painEntries = filteredEntries.filter(e => e.painLevel !== undefined && e.painLevel > 0);
+    const avgPain = painEntries.length > 0
+        ? (painEntries.reduce((sum, e) => sum + e.painLevel!, 0) / painEntries.length).toFixed(1)
+        : '0';
+
+    const formatMonthName = (yyyy_mm: string) => {
+        const [year, month] = yyyy_mm.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+        const name = date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+        return name.charAt(0).toUpperCase() + name.slice(1);
+    };
+    // -------------------------------
+
 
     return (
         <div className="pb-24 dark:bg-[#1a0d10] min-h-screen">
@@ -210,6 +256,61 @@ export const PeriodScreen: React.FC = () => {
                                 </div>
                             );
                         })}
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Tus Estadísticas ───────────────────────────────────────────── */}
+            <div className="px-6 mb-10 w-full">
+                <div className="flex justify-between items-end mb-4 pr-1">
+                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider ml-1">Tus Estadísticas</h3>
+                    <select
+                        value={selectedStatsMonth}
+                        onChange={(e) => setSelectedStatsMonth(e.target.value)}
+                        className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border-none outline-none py-1.5 pl-3 pr-8 rounded-full cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2024%24%24%22%20fill%3D%22none%22%20stroke%3D%22%23e11d48%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_4px_center] bg-[length:16px_16px]"
+                    >
+                        <option value="all">Histórico completo</option>
+                        {availableStatsMonths.map(m => (
+                            <option key={m} value={m}>{formatMonthName(m)}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col items-center text-center">
+                        <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-500 dark:bg-indigo-900/20 dark:text-indigo-400 flex items-center justify-center mb-2">
+                            <span className="material-symbols-outlined text-2xl">calendar_month</span>
+                        </div>
+                        <span className="text-3xl font-black text-slate-700 dark:text-slate-200">{totalLoggedDays}</span>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 mt-1">Días Medidos</span>
+                    </div>
+
+                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col items-center text-center">
+                        <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-500 dark:bg-rose-900/20 dark:text-rose-400 flex items-center justify-center mb-2">
+                            <span className="material-symbols-outlined text-2xl">healing</span>
+                        </div>
+                        <span className="text-3xl font-black text-slate-700 dark:text-slate-200">{avgPain}</span>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 mt-1">Dolor Prom. / 10</span>
+                    </div>
+
+                    <div className="col-span-2 bg-white dark:bg-[#2d1820] p-5 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex items-center gap-4">
+                        <div className="w-14 h-14 shrink-0 rounded-2xl bg-amber-50 text-amber-500 dark:bg-amber-900/20 dark:text-amber-400 flex items-center justify-center text-3xl shadow-sm">
+                            {topMood ? topMood[0] : '😶'}
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold text-slate-400">Estado de Ánimo Frecuente</span>
+                            <span className="text-lg font-bold text-slate-700 dark:text-slate-200">{topMood ? topMood[1] : 'No registrado'}</span>
+                        </div>
+                    </div>
+
+                    <div className="col-span-2 bg-white dark:bg-[#2d1820] p-5 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex items-center gap-4">
+                        <div className="w-14 h-14 shrink-0 rounded-2xl bg-fuchsia-50 text-fuchsia-500 dark:bg-fuchsia-900/20 dark:text-fuchsia-400 flex items-center justify-center text-3xl shadow-sm">
+                            🤒
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold text-slate-400">Síntoma Principal</span>
+                            <span className="text-lg font-bold text-slate-700 dark:text-slate-200">{topSymptom || 'Ninguno'}</span>
+                        </div>
                     </div>
                 </div>
             </div>
