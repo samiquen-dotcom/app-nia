@@ -227,18 +227,25 @@ export const GymScreen: React.FC = () => {
 
                         <div className="space-y-4 mb-6">
                             <div>
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Emoji</label>
-                                <div className="flex gap-2 justify-center bg-slate-50 dark:bg-[#3a2028] p-2 rounded-xl border border-slate-100 dark:border-white/5">
-                                    {['💪', '🏋️‍♀️', '🏃‍♀️', '🧘‍♀️', '🍑', '🥊', '🏊‍♀️'].map(emoji => (
-                                        <button
-                                            key={emoji}
-                                            onClick={() => setNewRoutineEmoji(emoji)}
-                                            className={`w-10 h-10 rounded-lg text-xl transition-all ${newRoutineEmoji === emoji ? 'bg-white shadow-sm scale-110' : 'opacity-60 hover:opacity-100 hover:scale-105'}`}
-                                        >
-                                            {emoji}
-                                        </button>
-                                    ))}
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block ml-1">Emoji</label>
+                                <div className="flex justify-center">
+                                    <input
+                                        type="text"
+                                        value={newRoutineEmoji}
+                                        onChange={(e) => {
+                                            // Only allow a few characters max, expecting just one or two emojis
+                                            const val = e.target.value.substring(0, 4);
+                                            setNewRoutineEmoji(val || '💪');
+                                        }}
+                                        onClick={(e) => {
+                                            // Clear default if it's the default, to make it easier to type a new one
+                                            if (newRoutineEmoji === '💪') setNewRoutineEmoji('');
+                                        }}
+                                        className="w-16 h-16 text-3xl text-center bg-white dark:bg-[#1a0d10] border-2 border-emerald-100 dark:border-emerald-900/50 rounded-2xl shadow-sm focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all placeholder:opacity-30"
+                                        placeholder="💪"
+                                    />
                                 </div>
+                                <p className="text-[10px] text-center text-slate-400 mt-2">Usa tu teclado para elegir un emoji</p>
                             </div>
 
                             <div>
