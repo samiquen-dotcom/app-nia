@@ -468,9 +468,9 @@ export const FinanceScreen: React.FC = () => {
 
             {/* ── Add Transaction Bottom Sheet ────────────────────────────────── */}
             {showAdd && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 overflow-hidden">
+                <div className="fixed inset-0 z-[70] overflow-hidden">
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAdd(false)} />
-                    <div className="relative w-[92%] max-w-[400px] bg-white dark:bg-[#231218] rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+                    <div className="absolute bottom-0 left-0 w-full sm:left-1/2 sm:-translate-x-1/2 sm:max-w-[400px] bg-white dark:bg-[#231218] rounded-t-[2.5rem] sm:rounded-[2.5rem] sm:bottom-6 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in slide-in-from-bottom-1/2 duration-300">
 
                         {/* Top spacing to avoid cutout on some mobile browsers */}
                         <div className="pt-2 sm:pt-0" />

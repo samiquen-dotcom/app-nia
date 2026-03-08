@@ -38,9 +38,6 @@
 @layer base {
   body {
     @apply bg-background-light text-text-main font-display antialiased;
-    overflow-x: hidden !important;
-    width: 100vw;
-    position: relative;
   }
 
   html.dark body {
