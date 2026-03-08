@@ -38,12 +38,57 @@ export const GymScreen: React.FC = () => {
     const [newRoutineEmoji, setNewRoutineEmoji] = useState('💪');
     const [newRoutineName, setNewRoutineName] = useState('');
 
+    const [selectedMonth, setSelectedMonth] = useState<string>('all');
+
     const weekDates = getWeekDates();
     const todayEntry = data.history.find(h => h.date === todayStr());
 
     // Calculate progress for current week
     const thisWeekWorkouts = weekDates.filter(date => data.history.some(h => h.date === date)).length;
     const progressPercent = Math.min((thisWeekWorkouts / data.goalDaysPerWeek) * 100, 100);
+
+    // --- Statistics Calculations ---
+    const availableMonths = Array.from(new Set(data.history.map(h => h.date.substring(0, 7)))).sort().reverse();
+
+    const filteredHistory = selectedMonth === 'all'
+        ? data.history
+        : data.history.filter(h => h.date.startsWith(selectedMonth));
+
+    const totalWorkouts = filteredHistory.length;
+
+    // Calculate perfect weeks
+    const getMonday = (dateStr: string) => {
+        const d = new Date(dateStr);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        return new Date(d.setDate(diff)).toISOString().split('T')[0];
+    };
+
+    const workoutsPerWeek = filteredHistory.reduce((acc, curr) => {
+        const monday = getMonday(curr.date);
+        acc[monday] = (acc[monday] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const perfectWeeks = Object.values(workoutsPerWeek).filter(count => count >= data.goalDaysPerWeek).length;
+
+    // Calculate favorite routine
+    const routineCounts = filteredHistory.reduce((acc, curr) => {
+        acc[curr.workoutId] = (acc[curr.workoutId] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const favoriteRoutineId = Object.keys(routineCounts).sort((a, b) => routineCounts[b] - routineCounts[a])[0];
+    const favoriteRoutine = data.customRoutines.find(r => r.id === favoriteRoutineId);
+    const favoriteRoutineCount = favoriteRoutineId ? routineCounts[favoriteRoutineId] : 0;
+
+    const formatMonth = (yyyy_mm: string) => {
+        const [year, month] = yyyy_mm.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+        const name = date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+        return name.charAt(0).toUpperCase() + name.slice(1);
+    };
+    // -------------------------------
 
     const handleSaveGoal = async () => {
         await save({ ...data, goalDaysPerWeek: tempGoal });
@@ -218,6 +263,57 @@ export const GymScreen: React.FC = () => {
                 </div>
             </div>
 
+            {/* Statistics Section */}
+            <div className="mt-10 mb-4">
+                <div className="flex justify-between items-end mb-4 pr-1">
+                    <h3 className="font-bold text-slate-700 dark:text-slate-200 ml-1">Estadísticas</h3>
+                    <select
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-none outline-none py-1.5 pl-3 pr-8 rounded-full cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2024%24%24%22%20fill%3D%22none%22%20stroke%3D%22%2310b981%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_4px_center] bg-[length:16px_16px]"
+                    >
+                        <option value="all">Histórico completo</option>
+                        {availableMonths.map(m => (
+                            <option key={m} value={m}>{formatMonth(m)}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-2xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col items-center text-center">
+                        <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-500 dark:bg-blue-900/20 dark:text-blue-400 flex items-center justify-center mb-2">
+                            <span className="material-symbols-outlined">bolt</span>
+                        </div>
+                        <span className="text-2xl font-black text-slate-700 dark:text-slate-200">{totalWorkouts}</span>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 mt-1">Entrenamientos</span>
+                    </div>
+
+                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-2xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col items-center text-center">
+                        <div className="w-10 h-10 rounded-full bg-orange-50 text-orange-500 dark:bg-orange-900/20 dark:text-orange-400 flex items-center justify-center mb-2">
+                            <span className="material-symbols-outlined">emoji_events</span>
+                        </div>
+                        <span className="text-2xl font-black text-slate-700 dark:text-slate-200">{perfectWeeks}</span>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 mt-1">Semanas Perfectas</span>
+                    </div>
+
+                    <div className="col-span-2 bg-white dark:bg-[#2d1820] p-4 rounded-2xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-500 dark:bg-purple-900/20 dark:text-purple-400 flex items-center justify-center text-2xl">
+                                {favoriteRoutine?.icon || '⭐'}
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] uppercase font-bold text-slate-400">Rutina Favorita</span>
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{favoriteRoutine?.label || 'Ninguna'}</span>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-xl font-black text-slate-700 dark:text-slate-200">{favoriteRoutineCount}</span>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Veces</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Create Routine Modal */}
             {isCreatingRoutine && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -237,7 +333,7 @@ export const GymScreen: React.FC = () => {
                                             const val = e.target.value.substring(0, 4);
                                             setNewRoutineEmoji(val || '💪');
                                         }}
-                                        onClick={(e) => {
+                                        onClick={() => {
                                             // Clear default if it's the default, to make it easier to type a new one
                                             if (newRoutineEmoji === '💪') setNewRoutineEmoji('');
                                         }}
