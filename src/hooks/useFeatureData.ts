@@ -15,7 +15,10 @@ export function useFeatureData<T extends object>(feature: string, defaultValue: 
         if (!user) { setLoading(false); return; }
         setLoading(true);
         FirestoreService.getFeatureData(user.uid, feature).then(fetched => {
-            if (fetched) setData(fetched as T);
+            if (fetched) {
+                // Merge with defaultValue to ensure newly added properties (like Arrays) exist
+                setData({ ...defaultValue, ...fetched } as T);
+            }
             setLoading(false);
         });
     }, [user, feature]);
