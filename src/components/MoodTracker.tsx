@@ -3,17 +3,26 @@ import { useFeatureData } from '../hooks/useFeatureData';
 import type { MoodData, MoodEntry } from '../types';
 
 const moods = [
-    { emoji: '🌸', label: 'Calm',  color: 'bg-pink-100 text-pink-500' },
+    { emoji: '🌸', label: 'Calm', color: 'bg-pink-100 text-pink-500' },
     { emoji: '🌿', label: 'Fresh', color: 'bg-green-100 text-green-500' },
     { emoji: '🌙', label: 'Tired', color: 'bg-indigo-100 text-indigo-500' },
-    { emoji: '🌧', label: 'Sad',   color: 'bg-blue-100 text-blue-500' },
-    { emoji: '🔥', label: 'Hype',  color: 'bg-orange-100 text-orange-500' },
+    { emoji: '🌧', label: 'Sad', color: 'bg-blue-100 text-blue-500' },
+    { emoji: '🔥', label: 'Hype', color: 'bg-orange-100 text-orange-500' },
 ];
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
 export const MoodTracker: React.FC = () => {
-    const { data, save } = useFeatureData<MoodData>('mood', { entries: [] });
+    const { data, save } = useFeatureData<MoodData>('mood', {
+        entries: [],
+        customMoods: [
+            { id: 'calm', emoji: '🌸', label: 'Calm' },
+            { id: 'fresh', emoji: '🌿', label: 'Fresh' },
+            { id: 'tired', emoji: '🌙', label: 'Tired' },
+            { id: 'sad', emoji: '🌧', label: 'Sad' },
+            { id: 'hype', emoji: '🔥', label: 'Hype' }
+        ]
+    });
     const [showHistory, setShowHistory] = useState(false);
 
     const todayEntry = data.entries.find(e => e.date === todayStr());

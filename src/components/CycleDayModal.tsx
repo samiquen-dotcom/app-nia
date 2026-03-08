@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useFeatureData } from '../hooks/useFeatureData';
-import type { PeriodData, GymData } from '../types';
+import type { PeriodData, GymData, MoodData, CustomMood } from '../types';
 import type { EnergyLevel } from '../utils/cycleLogic';
 import { ENERGY_LEVELS } from '../utils/cycleLogic';
 
@@ -12,14 +12,6 @@ const SYMPTOMS = [
     { id: 'antojos', label: 'Antojos', icon: '🍫' },
     { id: 'triste', label: 'Triste', icon: '😢' },
     { id: 'sensible', label: 'Sensible', icon: '🥺' },
-];
-
-const MOODS = [
-    { emoji: '🌸', label: 'Calm' },
-    { emoji: '🌿', label: 'Fresh' },
-    { emoji: '🌙', label: 'Tired' },
-    { emoji: '🌧', label: 'Sad' },
-    { emoji: '🔥', label: 'Hype' },
 ];
 
 interface CycleDayModalProps {
@@ -48,6 +40,21 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
             { id: 'yoga', icon: '🧘‍♀️', label: 'Yoga' }
         ]
     });
+
+    const { data: moodData, save: saveMood } = useFeatureData<MoodData>('mood', {
+        entries: [],
+        customMoods: [
+            { id: 'calm', emoji: '🌸', label: 'Calm' },
+            { id: 'fresh', emoji: '🌿', label: 'Fresh' },
+            { id: 'tired', emoji: '🌙', label: 'Tired' },
+            { id: 'sad', emoji: '🌧', label: 'Sad' },
+            { id: 'hype', emoji: '🔥', label: 'Hype' },
+        ]
+    });
+
+    const [isCreatingMood, setIsCreatingMood] = useState(false);
+    const [newMoodEmoji, setNewMoodEmoji] = useState('✨');
+    const [newMoodLabel, setNewMoodLabel] = useState('');
 
     const [isReadOnly, setIsReadOnly] = useState(initialMode === 'readonly');
     const [step, setStep] = useState<1 | 2 | 3 | 4>(requireWizard ? 1 : 1);
@@ -97,6 +104,21 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
             setSelectedRoutineId(undefined);
         }
     }, [date, data.dailyEntries, gymData, requireWizard]);
+
+    const handleQuickAddMood = () => {
+        if (!newMoodLabel.trim()) return;
+        const newMood: CustomMood = {
+            id: Date.now().toString(),
+            emoji: newMoodEmoji || '✨',
+            label: newMoodLabel.trim()
+        };
+        saveMood({ customMoods: [...moodData.customMoods, newMood] });
+        setMoodEmoji(newMood.emoji);
+        setMoodLabel(newMood.label);
+        setIsCreatingMood(false);
+        setNewMoodLabel('');
+        setNewMoodEmoji('✨');
+    };
 
     const handleNextPhase1 = () => {
         if (!moodLabel) return;
@@ -323,19 +345,87 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
                                         <label className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3 block text-center">
                                             Paso 1: ¿Cómo te sentiste {prefix ? prefix.toLowerCase() : 'ese día'}?
                                         </label>
-                                        <div className="flex justify-between items-center gap-1 py-2">
-                                            {MOODS.map((mood) => (
+                                        <div className="flex gap-2 py-2 overflow-x-auto scrollbar-hide px-1">
+                                            {moodData.customMoods?.map((mood: any) => (
                                                 <button
-                                                    key={mood.label}
+                                                    key={mood.id}
                                                     onClick={() => { setMoodEmoji(mood.emoji); setMoodLabel(mood.label); }}
-                                                    className={`group flex flex-col items-center justify-center gap-1 flex-1 py-3 rounded-2xl transition-all active:scale-95 border-2 ${moodLabel === mood.label ? 'border-primary bg-primary/10 shadow-sm scale-110' : 'border-transparent bg-slate-50 dark:bg-white/5 hover:bg-slate-100 duration-200'}`}
+                                                    className={`group flex-shrink-0 w-[4.5rem] flex flex-col items-center justify-center gap-1 py-3 rounded-2xl transition-all active:scale-95 border-2 ${moodLabel === mood.label ? 'border-primary bg-primary/10 shadow-sm scale-110' : 'border-transparent bg-slate-50 dark:bg-white/5 hover:bg-slate-100 duration-200'}`}
                                                 >
                                                     <span className={`text-3xl drop-shadow-sm transition-transform ${moodLabel === mood.label ? 'scale-110' : 'scale-100 grayscale-[0.3] opacity-60'}`}>{mood.emoji}</span>
-                                                    <span className={`text-[10px] font-bold mt-1 ${moodLabel === mood.label ? 'text-primary' : 'text-slate-400'}`}>{mood.label}</span>
+                                                    <span className={`text-[10px] font-bold mt-1 max-w-full truncate px-1 ${moodLabel === mood.label ? 'text-primary' : 'text-slate-400'}`}>{mood.label}</span>
                                                 </button>
                                             ))}
+                                            <button
+                                                onClick={() => setIsCreatingMood(true)}
+                                                className="group flex-shrink-0 w-[4.5rem] flex flex-col items-center justify-center gap-1 py-3 rounded-2xl transition-all active:scale-95 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-white/5 text-slate-400"
+                                            >
+                                                <span className="material-symbols-outlined text-2xl mb-1">add</span>
+                                                <span className="text-[10px] font-bold mt-1 max-w-full truncate px-1">Nueva</span>
+                                            </button>
                                         </div>
                                     </div>
+
+                                    {/* Create Mood Modal */}
+                                    {isCreatingMood && (
+                                        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCreatingMood(false)}></div>
+                                            <div className="relative bg-white dark:bg-[#231218] p-6 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                                                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 text-center">Nueva Emoción</h3>
+
+                                                <div className="space-y-4 mb-6">
+                                                    <div>
+                                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block ml-1">Emoji</label>
+                                                        <div className="flex justify-center">
+                                                            <input
+                                                                type="text"
+                                                                value={newMoodEmoji}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value.substring(0, 4);
+                                                                    setNewMoodEmoji(val || '✨');
+                                                                }}
+                                                                onClick={() => {
+                                                                    if (newMoodEmoji === '✨') setNewMoodEmoji('');
+                                                                }}
+                                                                className="w-16 h-16 text-3xl text-center bg-white dark:bg-[#1a0d10] border-2 border-indigo-100 dark:border-indigo-900/50 rounded-2xl shadow-sm focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder:opacity-30"
+                                                                placeholder="✨"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block ml-1">Nombre</label>
+                                                        <input
+                                                            type="text"
+                                                            value={newMoodLabel}
+                                                            onChange={(e) => setNewMoodLabel(e.target.value)}
+                                                            className="w-full bg-slate-50 dark:bg-[#1a0d10] border-2 border-slate-100 dark:border-[#5a2b35]/30 rounded-2xl px-4 py-3 text-slate-700 dark:text-slate-200 font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none transition-all placeholder:font-medium"
+                                                            placeholder="Ej: Ansiosa, Feliz..."
+                                                            autoFocus
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') handleQuickAddMood();
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex gap-3">
+                                                    <button
+                                                        onClick={() => setIsCreatingMood(false)}
+                                                        className="flex-1 px-4 py-3 rounded-2xl font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 transition-colors"
+                                                    >
+                                                        Cancelar
+                                                    </button>
+                                                    <button
+                                                        onClick={handleQuickAddMood}
+                                                        disabled={!newMoodLabel.trim()}
+                                                        className="flex-1 px-4 py-3 rounded-2xl font-bold text-white bg-pink-500 hover:bg-pink-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-pink-500/20"
+                                                    >
+                                                        Crear
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="pt-4 flex gap-3">
                                         <button onClick={() => onClose(false)} className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-slate-100 dark:bg-[#3a2028]">

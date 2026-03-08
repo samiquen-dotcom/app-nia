@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useFeatureData } from '../hooks/useFeatureData';
-import type { WellnessData } from '../types';
+import type { WellnessData, MoodData, CustomMood } from '../types';
 
-const HABITS     = ['Leer 10 páginas', 'Skincare', 'Meditar', 'Agradecer'];
+const HABITS = ['Leer 10 páginas', 'Skincare', 'Meditar', 'Agradecer'];
 const WATER_GOAL = 8;
-const todayStr   = () => new Date().toISOString().split('T')[0];
+const todayStr = () => new Date().toISOString().split('T')[0];
 
 const sendNotif = (body: string) => {
     if (Notification.permission === 'granted') {
@@ -14,13 +14,27 @@ const sendNotif = (body: string) => {
 
 export const WellnessScreen: React.FC = () => {
     const { data, save } = useFeatureData<WellnessData>('wellness', { days: [] });
+    const { data: moodData, save: saveMood } = useFeatureData<MoodData>('mood', {
+        entries: [],
+        customMoods: [
+            { id: 'calm', emoji: '🌸', label: 'Calm' },
+            { id: 'fresh', emoji: '🌿', label: 'Fresh' },
+            { id: 'tired', emoji: '🌙', label: 'Tired' },
+            { id: 'sad', emoji: '🌧', label: 'Sad' },
+            { id: 'hype', emoji: '🔥', label: 'Hype' },
+        ]
+    });
 
-    const [timerActive,  setTimerActive]  = useState(false);
-    const [timeLeft,     setTimeLeft]     = useState(300);
-    const [mode,         setMode]         = useState<'breathing' | 'pomodoro'>('breathing');
+    const [isCreatingMood, setIsCreatingMood] = useState(false);
+    const [newMoodEmoji, setNewMoodEmoji] = useState('✨');
+    const [newMoodLabel, setNewMoodLabel] = useState('');
+
+    const [timerActive, setTimerActive] = useState(false);
+    const [timeLeft, setTimeLeft] = useState(300);
+    const [mode, setMode] = useState<'breathing' | 'pomodoro'>('breathing');
     const [notifGranted, setNotifGranted] = useState(Notification.permission === 'granted');
 
-    const today     = todayStr();
+    const today = todayStr();
     const todayData = data.days.find(d => d.date === today) ?? { date: today, glasses: 0, habits: [] };
 
     // ─── Timer ────────────────────────────────────────────────────────────────
@@ -45,7 +59,7 @@ export const WellnessScreen: React.FC = () => {
 
     // ─── Persistence helpers ──────────────────────────────────────────────────
     const updateToday = (updates: Partial<typeof todayData>) => {
-        const updated   = { ...todayData, ...updates };
+        const updated = { ...todayData, ...updates };
         const otherDays = data.days.filter(d => d.date !== today);
         return save({ days: [updated, ...otherDays] });
     };
@@ -58,6 +72,24 @@ export const WellnessScreen: React.FC = () => {
             : [...todayData.habits, h];
         updateToday({ habits });
         if (!todayData.habits.includes(h)) sendNotif(`¡Hábito completado: ${h}! 🎉`);
+    };
+
+    // ─── Moods ────────────────────────────────────────────────────────────────
+    const handleAddMood = () => {
+        if (!newMoodLabel.trim()) return;
+        const newMood: CustomMood = {
+            id: Date.now().toString(),
+            emoji: newMoodEmoji || '✨',
+            label: newMoodLabel.trim()
+        };
+        saveMood({ customMoods: [...moodData.customMoods, newMood] });
+        setIsCreatingMood(false);
+        setNewMoodLabel('');
+        setNewMoodEmoji('✨');
+    };
+
+    const handleDeleteMood = (id: string) => {
+        saveMood({ customMoods: moodData.customMoods.filter(m => m.id !== id) });
     };
 
     // ─── Notifications ────────────────────────────────────────────────────────
@@ -173,6 +205,98 @@ export const WellnessScreen: React.FC = () => {
                     ))}
                 </div>
             </div>
+
+            {/* ── Custom Moods ──────────────────────────────────────────────────── */}
+            <div className="mt-8">
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-slate-700 dark:text-slate-200">Mis Emociones</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                    {moodData.customMoods?.map(mood => (
+                        <div key={mood.id} className="bg-white dark:bg-[#2d1820] border border-slate-100 dark:border-[#5a2b35]/30 p-3 rounded-2xl flex items-center justify-between shadow-sm">
+                            <div className="flex items-center gap-3">
+                                <span className="text-xl bg-slate-50 dark:bg-black/20 w-8 h-8 rounded-full flex items-center justify-center">{mood.emoji}</span>
+                                <span className="text-sm font-bold text-slate-600 dark:text-slate-300">{mood.label}</span>
+                            </div>
+                            {/* Allow deleting any mood, even defaults if user wants, or we could protect defaults. Let's allow complete freedom */}
+                            <button
+                                onClick={() => handleDeleteMood(mood.id)}
+                                className="w-6 h-6 rounded-full flex items-center justify-center text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/40 transition-colors"
+                            >
+                                <span className="material-symbols-outlined text-[16px]">close</span>
+                            </button>
+                        </div>
+                    ))}
+                    <button
+                        onClick={() => setIsCreatingMood(true)}
+                        className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/40 p-3 rounded-2xl flex items-center justify-center gap-2 text-indigo-500 hover:bg-indigo-100 transition-colors border-dashed"
+                    >
+                        <span className="material-symbols-outlined text-sm">add</span>
+                        <span className="text-sm font-bold">Nueva emoción</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* Create Mood Modal */}
+            {isCreatingMood && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCreatingMood(false)}></div>
+                    <div className="relative bg-white dark:bg-[#231218] p-6 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 text-center">Nueva Emoción</h3>
+
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block ml-1">Emoji</label>
+                                <div className="flex justify-center">
+                                    <input
+                                        type="text"
+                                        value={newMoodEmoji}
+                                        onChange={(e) => {
+                                            const val = e.target.value.substring(0, 4);
+                                            setNewMoodEmoji(val || '✨');
+                                        }}
+                                        onClick={() => {
+                                            if (newMoodEmoji === '✨') setNewMoodEmoji('');
+                                        }}
+                                        className="w-16 h-16 text-3xl text-center bg-white dark:bg-[#1a0d10] border-2 border-indigo-100 dark:border-indigo-900/50 rounded-2xl shadow-sm focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder:opacity-30"
+                                        placeholder="✨"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block ml-1">Nombre</label>
+                                <input
+                                    type="text"
+                                    value={newMoodLabel}
+                                    onChange={(e) => setNewMoodLabel(e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-[#1a0d10] border-2 border-slate-100 dark:border-[#5a2b35]/30 rounded-2xl px-4 py-3 text-slate-700 dark:text-slate-200 font-bold focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none transition-all placeholder:font-medium"
+                                    placeholder="Ej: Ansiosa, Feliz..."
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleAddMood();
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setIsCreatingMood(false)}
+                                className="flex-1 px-4 py-3 rounded-2xl font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleAddMood}
+                                disabled={!newMoodLabel.trim()}
+                                className="flex-1 px-4 py-3 rounded-2xl font-bold text-white bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-indigo-500/20"
+                            >
+                                Crear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

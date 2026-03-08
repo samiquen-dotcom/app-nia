@@ -130,8 +130,15 @@ export interface MoodEntry {
     timestamp: number;
 }
 
+export interface CustomMood {
+    id: string;
+    emoji: string;
+    label: string;
+}
+
 export interface MoodData {
     entries: MoodEntry[];
+    customMoods: CustomMood[];
 }
 
 // ─── Food ─────────────────────────────────────────────────────────────────────
