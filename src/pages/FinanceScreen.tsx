@@ -468,26 +468,26 @@ export const FinanceScreen: React.FC = () => {
 
             {/* ── Add Transaction Bottom Sheet ────────────────────────────────── */}
             {showAdd && (
-                <div className="fixed inset-0 z-[70] overflow-hidden">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAdd(false)} />
-                    <div className="absolute bottom-0 left-0 w-full sm:left-1/2 sm:-translate-x-1/2 sm:max-w-[400px] bg-white dark:bg-[#231218] rounded-t-[2.5rem] sm:rounded-[2.5rem] sm:bottom-6 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in slide-in-from-bottom-1/2 duration-300">
+                <div className="fixed top-0 left-0 right-0 bottom-0 z-[70] flex flex-col justify-end sm:justify-center items-center overflow-hidden">
+                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity" onClick={() => setShowAdd(false)} />
+                    <div className="relative w-full max-w-md bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300 pointer-events-auto">
 
                         {/* Top spacing to avoid cutout on some mobile browsers */}
                         <div className="pt-2 sm:pt-0" />
 
                         {/* Handle / Header */}
                         <div className="flex flex-col items-center pt-3 pb-1 border-b border-slate-50 dark:border-white/5">
-                            <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-600 mb-2" />
+                            <div className="w-10 h-1 flex-shrink-0 rounded-full bg-slate-200 dark:bg-slate-600 mb-2" />
                         </div>
 
-                        <div className="px-6 pb-24 sm:pb-8 overflow-y-auto overflow-x-hidden flex-1 scrollbar-hide">
+                        <div className="px-5 sm:px-6 pb-24 sm:pb-8 overflow-y-auto overflow-x-hidden flex-1 scrollbar-hide">
                             {/* Title */}
-                            <div className="flex items-center justify-between mb-5">
-                                <h2 className="text-lg font-extrabold text-slate-800 dark:text-slate-100">
+                            <div className="flex items-center justify-between gap-2 mb-5">
+                                <h2 className="text-lg font-extrabold text-slate-800 dark:text-slate-100 min-w-0 truncate">
                                     {txType === 'expense' ? '💸 Nuevo gasto' : '💰 Nuevo ingreso'}
                                 </h2>
                                 {/* Type toggle */}
-                                <div className="flex gap-1 bg-slate-100 dark:bg-[#2d1820] rounded-full p-1">
+                                <div className="flex gap-1 flex-shrink-0 bg-slate-100 dark:bg-[#2d1820] rounded-full p-1">
                                     <button
                                         onClick={() => { setTxType('expense'); setTxCat(''); setTxCatEmoji(''); }}
                                         className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${txType === 'expense' ? 'bg-rose-400 text-white shadow-sm' : 'text-slate-400'}`}
@@ -503,7 +503,7 @@ export const FinanceScreen: React.FC = () => {
                             <div className="mb-5">
                                 <label htmlFor="tx-amount" className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Monto</label>
                                 <div className={`flex items-center gap-2 bg-slate-50 dark:bg-[#2d1820] rounded-2xl px-4 py-3 border-2 transition-colors ${txAmount ? (txType === 'expense' ? 'border-rose-300' : 'border-emerald-300') : 'border-transparent'}`}>
-                                    <span className="text-2xl font-extrabold text-slate-400">$</span>
+                                    <span className="text-2xl font-extrabold text-slate-400 flex-shrink-0">$</span>
                                     <input
                                         id="tx-amount"
                                         type="number"
@@ -512,7 +512,7 @@ export const FinanceScreen: React.FC = () => {
                                         placeholder="0"
                                         min="0"
                                         autoFocus
-                                        className="flex-1 text-3xl font-extrabold text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"
+                                        className="flex-1 w-full min-w-0 text-3xl font-extrabold text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none"
                                     />
                                 </div>
                             </div>
@@ -522,7 +522,7 @@ export const FinanceScreen: React.FC = () => {
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">
                                     {txType === 'expense' ? '¿De dónde sale?' : '¿A qué cuenta entra?'}
                                 </label>
-                                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
                                     {accounts.map(acc => {
                                         const meta = ACCOUNT_META[acc.id];
                                         const selected = txAccount === acc.id;
@@ -533,8 +533,8 @@ export const FinanceScreen: React.FC = () => {
                                                 className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all ${selected ? `border-violet-400 bg-violet-50 dark:bg-violet-900/30 scale-105` : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'}`}
                                             >
                                                 <span className="text-xl">{meta.emoji}</span>
-                                                <span className={`text-[10px] font-bold ${selected ? 'text-violet-600 dark:text-violet-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
-                                                <span className="text-[9px] text-slate-400">{fmt(acc.balance ?? acc.initialBalance)}</span>
+                                                <span className={`text-[10px] w-full min-w-0 truncate font-bold text-center ${selected ? 'text-violet-600 dark:text-violet-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
+                                                <span className="text-[9px] text-slate-400 truncate">{fmt(acc.balance ?? acc.initialBalance)}</span>
                                             </button>
                                         );
                                     })}
@@ -543,32 +543,32 @@ export const FinanceScreen: React.FC = () => {
 
                             {/* Category grid */}
                             <div className="mb-5">
-                                <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center justify-between mb-2 gap-2">
                                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wide">Categoría</label>
                                     <button
                                         onClick={() => setShowAddCat(true)}
-                                        className="text-[10px] text-accent font-bold flex items-center gap-0.5 hover:text-primary"
+                                        className="text-[10px] text-accent font-bold flex flex-shrink-0 items-center gap-0.5 hover:text-primary"
                                     >
                                         <span className="material-symbols-outlined text-xs">add</span> Nueva
                                     </button>
                                 </div>
-                                <div className="grid grid-cols-4 gap-2">
+                                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 sm:gap-2">
                                     {allCats.map(cat => {
                                         const selected = txCat === cat.label;
                                         const isCustom = customCats.some(c => c.label === cat.label);
                                         return (
-                                            <div key={cat.label} className="relative group">
+                                            <div key={cat.label} className="relative group min-w-0">
                                                 <button
                                                     onClick={() => selectCat(cat.emoji, cat.label)}
-                                                    className={`w-full flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${selected ? 'border-primary bg-primary/20 scale-105' : 'border-slate-100 dark:border-[#5a2b35]/20 bg-white dark:bg-[#2d1820] hover:border-primary/40'}`}
+                                                    className={`w-full flex flex-col items-center gap-1 p-1.5 sm:p-2 rounded-xl border-2 transition-all overflow-hidden ${selected ? 'border-primary bg-primary/20 scale-105' : 'border-slate-100 dark:border-[#5a2b35]/20 bg-white dark:bg-[#2d1820] hover:border-primary/40'}`}
                                                 >
-                                                    <span className="text-lg">{cat.emoji}</span>
-                                                    <span className={`text-[9px] font-bold text-center leading-tight ${selected ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'}`}>{cat.label}</span>
+                                                    <span className="text-lg flex-shrink-0">{cat.emoji}</span>
+                                                    <span className={`text-[9px] font-bold text-center leading-tight truncate w-full px-0.5 ${selected ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'}`}>{cat.label}</span>
                                                 </button>
                                                 {isCustom && (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); deleteCustomCategory(cat.label); }}
-                                                        className="absolute -top-1 -right-1 bg-rose-400 text-white w-4 h-4 rounded-full flex items-center justify-center shadow-sm hover:scale-110"
+                                                        className="absolute -top-1 -right-1 z-10 bg-rose-400 text-white w-4 h-4 flex-shrink-0 rounded-full flex items-center justify-center shadow-sm hover:scale-110"
                                                     >
                                                         <span className="material-symbols-outlined text-[10px]">close</span>
                                                     </button>
@@ -593,19 +593,21 @@ export const FinanceScreen: React.FC = () => {
                             </div>
 
                             {txError && (
-                                <div className="mb-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/30 rounded-xl px-4 py-2">
+                                <div className="mb-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/30 rounded-xl px-4 py-2 flex-shrink-0">
                                     <p className="text-xs text-rose-500 font-bold">{txError}</p>
                                 </div>
                             )}
 
                             {/* Save button */}
-                            <button
-                                onClick={saveTransaction}
-                                disabled={isSaving}
-                                className={`w-full py-4 rounded-2xl font-extrabold text-white text-base shadow-lg hover:scale-[1.02] active:scale-95 transition-all ${isSaving ? 'bg-slate-300 dark:bg-slate-700 cursor-not-allowed' : (txType === 'expense' ? 'bg-gradient-to-r from-rose-400 to-pink-500' : 'bg-gradient-to-r from-emerald-400 to-teal-500')}`}
-                            >
-                                {isSaving ? 'Guardando...' : (txType === 'expense' ? '💸 Guardar gasto' : '💰 Guardar ingreso')}
-                            </button>
+                            <div className="w-full flex-shrink-0">
+                                <button
+                                    onClick={saveTransaction}
+                                    disabled={isSaving}
+                                    className={`w-full py-4 rounded-2xl font-extrabold text-white text-base shadow-lg hover:scale-[1.02] active:scale-95 transition-all ${isSaving ? 'bg-slate-300 dark:bg-slate-700 cursor-not-allowed' : (txType === 'expense' ? 'bg-gradient-to-r from-rose-400 to-pink-500' : 'bg-gradient-to-r from-emerald-400 to-teal-500')}`}
+                                >
+                                    {isSaving ? 'Guardando...' : (txType === 'expense' ? '💸 Guardar gasto' : '💰 Guardar ingreso')}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
