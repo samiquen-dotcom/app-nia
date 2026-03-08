@@ -20,6 +20,7 @@ export const PeriodScreen: React.FC = () => {
     const [selectedStatsMonth, setSelectedStatsMonth] = useState<string>('all');
 
     const now = new Date();
+    const [calendarDate, setCalendarDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     const location = useLocation();
@@ -55,11 +56,19 @@ export const PeriodScreen: React.FC = () => {
     };
 
     // Calendar logic
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
+    const currentYear = calendarDate.getFullYear();
+    const currentMonth = calendarDate.getMonth();
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     const firstDay = new Date(currentYear, currentMonth, 1).getDay();
     const offset = firstDay === 0 ? 6 : firstDay - 1;
+
+    const changeMonth = (delta: number) => {
+        setCalendarDate(prev => {
+            const newDate = new Date(prev);
+            newDate.setMonth(newDate.getMonth() + delta);
+            return newDate;
+        });
+    };
 
     const getDayContent = (day: number) => {
         const dStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -216,7 +225,20 @@ export const PeriodScreen: React.FC = () => {
 
             {/* ── Calendar Grid ───────────────────────────────────────────────── */}
             <div className="px-6 mb-8 max-w-lg mx-auto w-full">
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 ml-1 text-center sm:text-left">Calendario</h3>
+                <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider ml-1">Calendario</h3>
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => changeMonth(-1)} className="p-1 w-8 h-8 rounded-full flex items-center justify-center bg-slate-50 dark:bg-[#2d1820] text-slate-500 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                            <span className="material-symbols-outlined text-sm">chevron_left</span>
+                        </button>
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 w-20 text-center uppercase tracking-wider">
+                            {calendarDate.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+                        </span>
+                        <button onClick={() => changeMonth(1)} className="p-1 w-8 h-8 rounded-full flex items-center justify-center bg-slate-50 dark:bg-[#2d1820] text-slate-500 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                            <span className="material-symbols-outlined text-sm">chevron_right</span>
+                        </button>
+                    </div>
+                </div>
                 <div className="bg-white dark:bg-[#2d1820] rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-100 dark:border-[#5a2b35]/30">
                     <div className="grid grid-cols-7 gap-1 mb-2">
                         {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map(d => (
