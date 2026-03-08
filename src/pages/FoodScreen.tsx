@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useFeatureData } from '../hooks/useFeatureData';
 import type { FoodData, FoodItem } from '../types';
 
-const MEAL_NAMES  = ['Desayuno', 'Almuerzo', 'Cena', 'Snacks'] as const;
-const CALORIE_GOAL = 2000;
-const todayStr     = () => new Date().toISOString().split('T')[0];
+const MEAL_NAMES = ['Desayuno', 'Almuerzo', 'Cena', 'Snacks'] as const;
+const todayStr = () => new Date().toISOString().split('T')[0];
 
 const emptyMeals = (): Record<string, FoodItem[]> =>
     Object.fromEntries(MEAL_NAMES.map(m => [m, []]));
@@ -13,18 +12,19 @@ export const FoodScreen: React.FC = () => {
     const { data, save, loading } = useFeatureData<FoodData>('food', { days: [] });
 
     const [newItemName, setNewItemName] = useState('');
-    const [newItemCal,  setNewItemCal]  = useState('');
-    const [activeMeal,  setActiveMeal]  = useState<string | null>(null);
-    const [migrated,    setMigrated]    = useState(false);
+    const [newItemCal, setNewItemCal] = useState('');
+    const [activeMeal, setActiveMeal] = useState<string | null>(null);
+    const [migrated, setMigrated] = useState(false);
 
-    const today     = todayStr();
+    const today = todayStr();
     const todayFood = data.days.find(d => d.date === today);
-    const meals     = todayFood?.meals ?? emptyMeals();
+    const meals = todayFood?.meals ?? emptyMeals();
 
     const totalCalories = Object.values(meals)
         .flat()
         .reduce((sum, item) => sum + item.calories, 0);
 
+    const CALORIE_GOAL = (data as any).preferences?.calorieGoal || 2000;
     const percentage = Math.min((totalCalories / CALORIE_GOAL) * 100, 100);
 
     // ─── Migrate localStorage → Firestore once ────────────────────────────────
@@ -52,10 +52,10 @@ export const FoodScreen: React.FC = () => {
         const cal = parseInt(newItemCal);
         if (isNaN(cal) || cal <= 0) return;
 
-        const currentMeals  = todayFood?.meals ?? emptyMeals();
-        const updatedMeal   = [...(currentMeals[meal] || []), { id: Date.now(), name: newItemName.trim(), calories: cal }];
-        const updatedMeals  = { ...currentMeals, [meal]: updatedMeal };
-        const otherDays     = data.days.filter(d => d.date !== today);
+        const currentMeals = todayFood?.meals ?? emptyMeals();
+        const updatedMeal = [...(currentMeals[meal] || []), { id: Date.now(), name: newItemName.trim(), calories: cal }];
+        const updatedMeals = { ...currentMeals, [meal]: updatedMeal };
+        const otherDays = data.days.filter(d => d.date !== today);
 
         save({ days: [{ date: today, meals: updatedMeals }, ...otherDays] });
         setNewItemName('');
@@ -65,9 +65,9 @@ export const FoodScreen: React.FC = () => {
     // ─── Remove food item ─────────────────────────────────────────────────────
     const removeFood = (meal: string, id: number) => {
         const currentMeals = todayFood?.meals ?? emptyMeals();
-        const updatedMeal  = (currentMeals[meal] || []).filter(i => i.id !== id);
+        const updatedMeal = (currentMeals[meal] || []).filter(i => i.id !== id);
         const updatedMeals = { ...currentMeals, [meal]: updatedMeal };
-        const otherDays    = data.days.filter(d => d.date !== today);
+        const otherDays = data.days.filter(d => d.date !== today);
         save({ days: [{ date: today, meals: updatedMeals }, ...otherDays] });
     };
 

@@ -49,14 +49,22 @@ export interface DebtsData {
 }
 
 // ─── Gym ──────────────────────────────────────────────────────────────────────
+export interface GymRoutine {
+    id: string;
+    icon: string;
+    label: string;
+}
+
 export interface GymEntry {
     date: string;     // YYYY-MM-DD
     workoutId: string;
 }
 
 export interface GymData {
-    streak: number;
+    goalDaysPerWeek: number; // Configurable goal, default 5
+    streak: number; // Legacy, kept for compatibility
     history: GymEntry[];
+    customRoutines: GymRoutine[];
 }
 
 // ─── Period ───────────────────────────────────────────────────────────────────
@@ -80,6 +88,7 @@ export interface DailyCycleEntry {
     painLevel?: number; // 1-10
     reliefMethods?: string[]; // ibuprofen, heat, tea, etc.
     notes?: string;
+    gymRoutineId?: string; // ID de la rutina de gym realizada (novedad)
 }
 
 // ─── Wellness ─────────────────────────────────────────────────────────────────

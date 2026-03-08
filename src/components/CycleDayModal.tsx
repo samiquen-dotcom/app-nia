@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useFeatureData } from '../hooks/useFeatureData';
-import type { PeriodData } from '../types';
+import type { PeriodData, GymData } from '../types';
 import type { EnergyLevel } from '../utils/cycleLogic';
 import { ENERGY_LEVELS } from '../utils/cycleLogic';
 
@@ -24,7 +24,7 @@ const MOODS = [
 
 interface CycleDayModalProps {
     date: string;
-    onClose: () => void;
+    onClose: (saved?: boolean) => void;
     initialMode?: 'readonly' | 'edit';
     requireWizard?: boolean; // If true, forces step 1 -> step 2
 }
@@ -38,8 +38,23 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
         dailyEntries: {}
     });
 
+    const { data: gymData, save: saveGym } = useFeatureData<GymData>('gym', {
+        goalDaysPerWeek: 5,
+        streak: 0,
+        history: [],
+        customRoutines: [
+            { id: 'cardio', icon: '🏃‍♀️', label: 'Cardio' },
+            { id: 'weights', icon: '🏋️‍♀️', label: 'Pesas' },
+            { id: 'yoga', icon: '🧘‍♀️', label: 'Yoga' }
+        ]
+    });
+
     const [isReadOnly, setIsReadOnly] = useState(initialMode === 'readonly');
-    const [step, setStep] = useState<1 | 2>(requireWizard ? 1 : 2);
+    const [step, setStep] = useState<1 | 2 | 3 | 4>(requireWizard ? 1 : 1);
+
+    // Temp Gym State
+    const [wentToGym, setWentToGym] = useState<boolean | null>(null);
+    const [selectedRoutineId, setSelectedRoutineId] = useState<string | undefined>();
 
     // Form State
     const [moodLabel, setMoodLabel] = useState<string>('');
@@ -71,18 +86,34 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
             setFlowLevel(undefined); setEnergyLevel('estable');
             setTodaySymptoms([]); setPainLevel(0); setReliefMethods([]);
         }
-    }, [date, data.dailyEntries, requireWizard]);
 
-    const handleNextPhase1 = async () => {
-        if (!moodLabel || hasBled === null) return;
-
-        if (hasBled === false) {
-            // Save immediately
-            await saveEntry(false);
-            onClose();
+        // Load Gym existing entry
+        const existingGymEntry = gymData.history.find((h: any) => h.date === date);
+        if (existingGymEntry) {
+            setWentToGym(true);
+            setSelectedRoutineId(existingGymEntry.workoutId);
         } else {
-            setStep(2);
+            setWentToGym(null);
+            setSelectedRoutineId(undefined);
         }
+    }, [date, data.dailyEntries, gymData, requireWizard]);
+
+    const handleNextPhase1 = () => {
+        if (!moodLabel) return;
+        setStep(2);
+    };
+
+    const handleNextPhase2 = () => {
+        if (hasBled === null) return;
+        if (hasBled) {
+            setStep(3); // Go to period details
+        } else {
+            setStep(4); // Skip to gym
+        }
+    };
+
+    const handleNextPhase3 = () => {
+        setStep(4); // Go to gym
     };
 
     const saveEntry = async (savingBled: boolean) => {
@@ -100,6 +131,20 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
 
         if (savingBled && flow_level) entry.flow = flow_level;
         if (savingBled && energy_level) entry.energy = energy_level;
+
+        // Handle Gym update
+        if (wentToGym === true && selectedRoutineId) {
+            // Include routine in cycle entry for easy reading
+            entry.gymRoutineId = selectedRoutineId;
+            // Also save to Gym feature data
+            const newHistory = gymData.history.filter((h: any) => h.date !== date);
+            newHistory.push({ date, workoutId: selectedRoutineId });
+            await saveGym({ ...gymData, history: newHistory });
+        } else if (wentToGym === false) {
+            // Remove from gym history if previously there
+            const newHistory = gymData.history.filter((h: any) => h.date !== date);
+            await saveGym({ ...gymData, history: newHistory });
+        }
 
         const updatedEntries = { ...data.dailyEntries, [date]: entry };
 
@@ -125,9 +170,9 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
         await save({ dailyEntries: updatedEntries, cycleStartDate: newCycleStartDate || '' });
     };
 
-    const handleSavePhase2 = async () => {
-        await saveEntry(true);
-        onClose();
+    const handleSavePhase4 = async () => {
+        await saveEntry(hasBled || false);
+        onClose(true);
     };
 
     const toggleSymptom = (label: string) => {
@@ -154,13 +199,10 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
     else if (diffDays === 2) prefix = 'Antier';
 
     return (
-        <div className="fixed inset-0 z-[60] flex flex-col justify-end sm:justify-center sm:items-center p-0 sm:p-4">
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity animate-in fade-in" onClick={onClose} />
+        <div className="fixed inset-0 z-[60] flex flex-col justify-center items-center p-4">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity animate-in fade-in duration-300" onClick={() => onClose(false)} />
 
-            <div className="relative w-full max-w-md bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl overflow-y-auto max-h-[90vh] animate-in slide-in-from-bottom flex flex-col">
-                <div className="flex justify-center pt-3 pb-1 sm:hidden flex-shrink-0">
-                    <div className="w-12 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700" />
-                </div>
+            <div className="relative w-full max-w-md mx-auto bg-white dark:bg-[#231218] rounded-[2rem] shadow-2xl overflow-y-auto max-h-[90vh] animate-in zoom-in-95 duration-300 flex flex-col">
 
                 <div className="p-6 flex-1 overflow-y-auto">
                     <div className="flex justify-between items-center mb-6">
@@ -253,7 +295,21 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
                                     </div>
                                 </>
                             )}
-                            <button onClick={onClose} className="w-full py-4 rounded-2xl font-bold text-slate-600 bg-slate-100 dark:bg-[#3a2028] mt-4">
+
+                            {wentToGym && (
+                                <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl flex items-center gap-4 border border-emerald-100 dark:border-emerald-900/30">
+                                    <div className="w-10 h-10 rounded-full bg-white dark:bg-[#3a2028] flex items-center justify-center text-xl shadow-sm">
+                                        {gymData.customRoutines.find((r: any) => r.id === selectedRoutineId)?.icon || '🏋️'}
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">¡Fuiste al Gym!</p>
+                                        <p className="font-bold text-slate-700 dark:text-slate-200">
+                                            {gymData.customRoutines.find((r: any) => r.id === selectedRoutineId)?.label || 'Rutina completada'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                            <button onClick={() => onClose()} className="w-full py-4 rounded-2xl font-bold text-slate-600 bg-slate-100 dark:bg-[#3a2028] mt-4">
                                 Cerrar
                             </button>
                         </div>
@@ -264,58 +320,79 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
                                 <div className="space-y-8">
                                     {/* Mood */}
                                     <div>
-                                        <label className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3 block">¿Cómo te sentiste {prefix ? prefix.toLowerCase() : 'ese día'}?</label>
-                                        <div className="flex justify-between items-center gap-1 overflow-x-auto scrollbar-hide py-2">
+                                        <label className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3 block text-center">
+                                            Paso 1: ¿Cómo te sentiste {prefix ? prefix.toLowerCase() : 'ese día'}?
+                                        </label>
+                                        <div className="flex justify-between items-center gap-1 py-2">
                                             {MOODS.map((mood) => (
                                                 <button
                                                     key={mood.label}
                                                     onClick={() => { setMoodEmoji(mood.emoji); setMoodLabel(mood.label); }}
-                                                    className={`group flex flex-col items-center justify-center gap-1 min-w-[60px] h-[72px] rounded-xl transition-all active:scale-95 border-2 ${moodLabel === mood.label ? 'border-primary bg-primary/10 shadow-sm scale-105' : 'border-transparent hover:bg-slate-50 dark:hover:bg-white/5'}`}
+                                                    className={`group flex flex-col items-center justify-center gap-1 flex-1 py-3 rounded-2xl transition-all active:scale-95 border-2 ${moodLabel === mood.label ? 'border-primary bg-primary/10 shadow-sm scale-110' : 'border-transparent bg-slate-50 dark:bg-white/5 hover:bg-slate-100 duration-200'}`}
                                                 >
-                                                    <span className="text-2xl drop-shadow-sm">{mood.emoji}</span>
-                                                    <span className={`text-[10px] font-bold ${moodLabel === mood.label ? 'text-primary' : 'text-slate-400'}`}>{mood.label}</span>
+                                                    <span className={`text-3xl drop-shadow-sm transition-transform ${moodLabel === mood.label ? 'scale-110' : 'scale-100 grayscale-[0.3] opacity-60'}`}>{mood.emoji}</span>
+                                                    <span className={`text-[10px] font-bold mt-1 ${moodLabel === mood.label ? 'text-primary' : 'text-slate-400'}`}>{mood.label}</span>
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
 
-                                    {/* Bleeding Question */}
-                                    <div className="bg-rose-50 dark:bg-rose-900/10 p-5 rounded-3xl border border-rose-100 dark:border-rose-900/30">
-                                        <label className="text-sm font-bold text-rose-900 dark:text-rose-100 mb-4 block text-center">
-                                            ¿Tuviste sangrado {prefix ? prefix.toLowerCase() : 'ese día'}? 🩸
-                                        </label>
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={() => setHasBled(true)}
-                                                className={`flex-1 py-4 rounded-2xl font-bold text-lg transition-all border-2 ${hasBled === true ? 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-200 dark:shadow-rose-900/50 scale-105' : 'bg-white dark:bg-black/20 border-rose-100 dark:border-rose-900/30 text-rose-400 hover:bg-rose-50'}`}
-                                            >
-                                                Sí
-                                            </button>
-                                            <button
-                                                onClick={() => setHasBled(false)}
-                                                className={`flex-1 py-4 rounded-2xl font-bold text-lg transition-all border-2 ${hasBled === false ? 'bg-slate-800 dark:bg-slate-200 border-slate-800 dark:border-slate-200 text-white dark:text-slate-900 shadow-lg scale-105' : 'bg-white dark:bg-black/20 border-slate-200 dark:border-slate-800 text-slate-400 hover:bg-slate-50'}`}
-                                            >
-                                                No
-                                            </button>
-                                        </div>
-                                    </div>
-
                                     <div className="pt-4 flex gap-3">
-                                        <button onClick={onClose} className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-slate-100 dark:bg-[#3a2028]">
+                                        <button onClick={() => onClose(false)} className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-slate-100 dark:bg-[#3a2028]">
                                             Posponer
                                         </button>
                                         <button
                                             onClick={handleNextPhase1}
-                                            disabled={!moodLabel || hasBled === null}
+                                            disabled={!moodLabel}
                                             className="flex-1 py-4 rounded-2xl font-bold text-white bg-slate-900 dark:bg-pink-500 disabled:opacity-50 transition-opacity"
                                         >
-                                            {hasBled ? 'Continuar ➡️' : 'Guardar ✅'}
+                                            Siguiente ➡️
                                         </button>
                                     </div>
                                 </div>
                             )}
 
                             {step === 2 && (
+                                <div className="space-y-8 animate-in slide-in-from-right-8">
+                                    {/* Bleeding Question */}
+                                    <div>
+                                        <label className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4 block text-center">
+                                            Paso 2: ¿Tuviste sangrado {prefix ? prefix.toLowerCase() : 'ese día'}? 🩸
+                                        </label>
+                                        <div className="flex gap-4">
+                                            <button
+                                                onClick={() => setHasBled(true)}
+                                                className={`flex-1 py-6 rounded-3xl font-bold text-xl transition-all border-2 flex flex-col items-center justify-center gap-2 ${hasBled === true ? 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-200 dark:shadow-rose-900/50 scale-105' : 'bg-white dark:bg-[#2d1820] border-rose-100 dark:border-rose-900/30 text-rose-400 hover:bg-rose-50'}`}
+                                            >
+                                                <span className="text-4xl text-white drop-shadow-sm">🩸</span>
+                                                Sí
+                                            </button>
+                                            <button
+                                                onClick={() => setHasBled(false)}
+                                                className={`flex-1 py-6 rounded-3xl font-bold text-xl transition-all border-2 flex flex-col items-center justify-center gap-2 ${hasBled === false ? 'bg-slate-800 dark:bg-slate-200 border-slate-800 dark:border-slate-200 text-white dark:text-slate-900 shadow-lg scale-105' : 'bg-white dark:bg-[#2d1820] border-slate-200 dark:border-slate-800/30 text-slate-400 hover:bg-slate-50'}`}
+                                            >
+                                                <span className={`text-4xl drop-shadow-sm ${hasBled === false ? '' : 'grayscale opacity-50'}`}>🌱</span>
+                                                No
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 flex gap-3">
+                                        <button onClick={() => setStep(1)} className="flex-1 py-4 rounded-2xl font-bold border-2 border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400 hover:bg-slate-50 transition-colors">
+                                            Atrás
+                                        </button>
+                                        <button
+                                            onClick={handleNextPhase2}
+                                            disabled={hasBled === null}
+                                            className="flex-[2] py-4 rounded-2xl font-bold text-white bg-slate-900 dark:bg-pink-500 disabled:opacity-50 transition-transform active:scale-95"
+                                        >
+                                            Siguiente ➡️
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 3 && (
                                 <div className="space-y-8 animate-in slide-in-from-right-8">
                                     {/* 1. FLOW */}
                                     <div>
@@ -383,11 +460,75 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
                                     </div>
 
                                     <div className="flex gap-3">
-                                        <button onClick={() => setStep(1)} className="flex-1 py-4 rounded-2xl font-bold border-2 border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400 hover:bg-slate-50 transition-colors">
+                                        <button onClick={() => setStep(2)} className="flex-1 py-4 rounded-2xl font-bold border-2 border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400 hover:bg-slate-50 transition-colors">
                                             Atrás
                                         </button>
-                                        <button onClick={handleSavePhase2} className="flex-[2] py-4 rounded-2xl font-bold text-white bg-slate-900 dark:bg-pink-500 shadow-lg active:scale-95 transition-transform">
-                                            Guardar ✅
+                                        <button onClick={handleNextPhase3} className="flex-[2] py-4 rounded-2xl font-bold text-white bg-slate-900 dark:bg-pink-500 shadow-lg active:scale-95 transition-transform">
+                                            Siguiente ➡️
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 4 && (
+                                <div className="space-y-8 animate-in slide-in-from-right-8">
+                                    {/* Gym Question */}
+                                    <div>
+                                        <label className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4 block text-center">
+                                            Paso 4: ¿Fuiste al Gym {prefix ? prefix.toLowerCase() : 'ese día'}? 🏋️‍♀️
+                                        </label>
+                                        <div className="flex gap-4">
+                                            <button
+                                                onClick={() => { setWentToGym(true); if (gymData.customRoutines.length > 0) setSelectedRoutineId(gymData.customRoutines[0].id); }}
+                                                className={`flex-1 py-5 rounded-3xl font-bold text-xl transition-all border-2 flex flex-col items-center justify-center gap-2 ${wentToGym === true ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/50 scale-105' : 'bg-white dark:bg-[#2d1820] border-emerald-100 dark:border-emerald-900/30 text-emerald-500 hover:bg-emerald-50'}`}
+                                            >
+                                                <span className="text-4xl drop-shadow-sm border-transparent" style={{ textShadow: wentToGym === true ? 'none' : '0 0 0 white, 0 0 1px emerald' }}>💪</span>
+                                                Sí
+                                            </button>
+                                            <button
+                                                onClick={() => { setWentToGym(false); setSelectedRoutineId(undefined); }}
+                                                className={`flex-1 py-5 rounded-3xl font-bold text-xl transition-all border-2 flex flex-col items-center justify-center gap-2 ${wentToGym === false ? 'bg-slate-800 dark:bg-slate-200 border-slate-800 dark:border-slate-200 text-white dark:text-slate-900 shadow-lg scale-105' : 'bg-white dark:bg-[#2d1820] border-slate-200 dark:border-slate-800/30 text-slate-400 hover:bg-slate-50'}`}
+                                            >
+                                                <span className={`text-4xl drop-shadow-sm ${wentToGym === false ? '' : 'grayscale opacity-50'}`}>🛋️</span>
+                                                No
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Routine Selection */}
+                                    {wentToGym === true && (
+                                        <div className="animate-in fade-in slide-in-from-bottom-2 p-5 bg-emerald-50 dark:bg-emerald-900/10 rounded-3xl border border-emerald-100 dark:border-emerald-900/30">
+                                            <label className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-3 block text-center">
+                                                ¿Qué rutina hiciste?
+                                            </label>
+                                            <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+                                                {gymData.customRoutines.map((routine: any) => (
+                                                    <button
+                                                        key={routine.id}
+                                                        onClick={() => setSelectedRoutineId(routine.id)}
+                                                        className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all flex items-center gap-3 border ${selectedRoutineId === routine.id ? 'bg-emerald-500 border-emerald-500 text-white shadow-md scale-[1.02]' : 'bg-white dark:bg-[#1a0d10] border-emerald-100 dark:border-emerald-800/50 text-slate-600 dark:text-slate-300 hover:border-emerald-300'}`}
+                                                    >
+                                                        <span className="text-xl bg-white/20 rounded-md p-1 h-8 w-8 flex items-center justify-center">{routine.icon}</span>
+                                                        <span>{routine.label}</span>
+                                                    </button>
+                                                ))}
+                                                {gymData.customRoutines.length === 0 && (
+                                                    <p className="text-xs text-center text-slate-500 italic py-4">No tienes rutinas creadas. Puedes añadirlas en la pantalla de Gym.</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setStep(hasBled ? 3 : 2)} className="flex-1 py-4 rounded-2xl font-bold border-2 border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400 hover:bg-slate-50 transition-colors">
+                                            Atrás
+                                        </button>
+                                        <button
+                                            onClick={handleSavePhase4}
+                                            disabled={wentToGym === null || (wentToGym === true && !selectedRoutineId)}
+                                            className="flex-[2] py-4 rounded-2xl font-bold text-white bg-slate-900 dark:bg-pink-500 disabled:opacity-50 shadow-lg active:scale-95 transition-transform"
+                                        >
+                                            Finalizar ✅
                                         </button>
                                     </div>
                                 </div>

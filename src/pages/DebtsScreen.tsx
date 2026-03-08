@@ -33,6 +33,7 @@ export const DebtsScreen: React.FC = () => {
     const [type, setType] = useState<'unique' | 'recurring'>('unique');
     const [frequency, setFrequency] = useState<'weekly' | 'biweekly' | 'monthly'>('monthly');
     const [dueDate, setDueDate] = useState('');
+    const [errorMsg, setErrorMsg] = useState('');
 
     useEffect(() => {
         if (!user) return;
@@ -63,12 +64,12 @@ export const DebtsScreen: React.FC = () => {
         if (!user) return;
 
         const t = title.trim();
-        if (!t) { alert('Falta el título'); return; }
+        if (!t) { setErrorMsg('¡Ups! Falta el título de la deuda.'); return; }
 
         const amt = parseFloat(amount);
-        if (!amount || isNaN(amt) || amt <= 0) { alert('Monto inválido'); return; }
+        if (!amount || isNaN(amt) || amt <= 0) { setErrorMsg('Ingresa un monto válido.'); return; }
 
-        if (!dueDate) { alert('Falta la fecha'); return; }
+        if (!dueDate) { setErrorMsg('Selecciona una fecha para la deuda.'); return; }
 
         try {
             // Create proper object without undefined fields
@@ -113,7 +114,7 @@ export const DebtsScreen: React.FC = () => {
 
         } catch (e) {
             console.error("Error saving debt:", e);
-            alert("Error al guardar: " + e);
+            setErrorMsg("Error al guardar: " + e);
             loadDebts();
         }
     };
@@ -182,6 +183,7 @@ export const DebtsScreen: React.FC = () => {
     };
 
     const openModal = (debt?: Debt) => {
+        setErrorMsg('');
         if (debt) {
             setEditingDebt(debt);
             setTitle(debt.title);
@@ -203,6 +205,7 @@ export const DebtsScreen: React.FC = () => {
     const closeModal = () => {
         setShowModal(false);
         setEditingDebt(null);
+        setErrorMsg('');
     };
 
     const fmt = (n: number) => n.toLocaleString('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 });
@@ -226,6 +229,19 @@ export const DebtsScreen: React.FC = () => {
     const isOverdue = (dateStr: string) => {
         const target = new Date(dateStr + 'T23:59:59');
         return target < new Date();
+    };
+
+    const handleRemove = async (debtId: string) => {
+        if (!user) return;
+        if (!confirm('¿Seguro que quieres eliminar esta deuda por completo?')) return;
+        try {
+            const updatedDebts = debts.filter(d => d.id !== debtId);
+            setDebts(updatedDebts);
+            const ref = doc(db, `users/${user.uid}/features`, 'debts');
+            await setDoc(ref, { items: updatedDebts }, { merge: true });
+        } catch (e) {
+            alert("Error al eliminar la deuda.");
+        }
     };
 
     return (
@@ -296,8 +312,15 @@ export const DebtsScreen: React.FC = () => {
                                         Editar
                                     </button>
                                     <button
+                                        onClick={() => handleRemove(debt.id)}
+                                        className="flex-[1] py-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold hover:bg-rose-100 transition-colors flex items-center justify-center gap-1"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">delete</span>
+                                        Eliminar
+                                    </button>
+                                    <button
                                         onClick={() => handlePay(debt)}
-                                        className="flex-1 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1"
+                                        className="flex-[1.5] py-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1"
                                     >
                                         <span className="material-symbols-outlined text-sm">check_circle</span>
                                         {debt.type === 'recurring' ? 'Ya pagué' : 'Pagado'}
@@ -327,8 +350,9 @@ export const DebtsScreen: React.FC = () => {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 block">Título</label>
+                                <label htmlFor="debt-title" className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 block">Título</label>
                                 <input
+                                    id="debt-title"
                                     type="text"
                                     value={title}
                                     onChange={e => setTitle(e.target.value)}
@@ -338,10 +362,11 @@ export const DebtsScreen: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 block">Monto</label>
+                                <label htmlFor="debt-amount" className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 block">Monto</label>
                                 <div className="flex items-center gap-2 bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/50 rounded-2xl px-4 py-3 focus-within:border-pink-400 transition-colors">
                                     <span className="text-slate-400 font-bold">$</span>
                                     <input
+                                        id="debt-amount"
                                         type="number"
                                         value={amount}
                                         onChange={e => setAmount(e.target.value)}
@@ -393,14 +418,17 @@ export const DebtsScreen: React.FC = () => {
                             )}
 
                             <div>
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 block">Próximo pago</label>
+                                <label htmlFor="debt-date" className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 block">Próximo pago</label>
                                 <input
+                                    id="debt-date"
                                     type="date"
                                     value={dueDate}
                                     onChange={e => setDueDate(e.target.value)}
                                     className="w-full bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/50 rounded-2xl px-4 py-3 focus:outline-none focus:border-pink-400 dark:text-slate-100 font-bold"
                                 />
                             </div>
+
+                            {errorMsg && <p className="text-xs text-rose-500 font-bold mt-2 text-center">{errorMsg}</p>}
 
                             <button
                                 onClick={handleSave}

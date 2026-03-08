@@ -113,10 +113,8 @@ export const FinanceScreen: React.FC = () => {
         if (!user || !data) return;
         const legacyTxs = data.transactions;
         if (legacyTxs && legacyTxs.length > 0) {
-            console.log("Starting legacy migration...");
             FirestoreService.migrateLegacyData(user.uid, legacyTxs, data.accounts)
                 .then(async () => {
-                    console.log("Migration finished. Refreshing data...");
                     const updated = await FirestoreService.getFeatureData(user.uid, 'finance');
                     if (updated) setData(updated as FinanceData);
 
@@ -500,10 +498,11 @@ export const FinanceScreen: React.FC = () => {
 
                             {/* Amount */}
                             <div className="mb-5">
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Monto</label>
+                                <label htmlFor="tx-amount" className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Monto</label>
                                 <div className={`flex items-center gap-2 bg-slate-50 dark:bg-[#2d1820] rounded-2xl px-4 py-3 border-2 transition-colors ${txAmount ? (txType === 'expense' ? 'border-rose-300' : 'border-emerald-300') : 'border-transparent'}`}>
                                     <span className="text-2xl font-extrabold text-slate-400">$</span>
                                     <input
+                                        id="tx-amount"
                                         type="number"
                                         value={txAmount}
                                         onChange={e => { setTxAmount(e.target.value); setTxError(''); }}
@@ -579,8 +578,9 @@ export const FinanceScreen: React.FC = () => {
 
                             {/* Description */}
                             <div className="mb-5">
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Descripción (opcional)</label>
+                                <label htmlFor="tx-desc" className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Descripción (opcional)</label>
                                 <input
+                                    id="tx-desc"
                                     type="text"
                                     value={txDesc}
                                     onChange={e => setTxDesc(e.target.value)}

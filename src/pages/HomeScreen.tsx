@@ -19,7 +19,8 @@ const todayDate = () => new Date().toLocaleDateString('es-ES', { month: 'short',
 interface DashboardData {
     calories: number;
     gymDone: boolean;
-    gymStreak: number;
+    gymGoal: number;
+    gymWeeklyCompleted: number;
     todaySpent: number;
     goalsTotal: number;
     goalsDone: number;
@@ -45,12 +46,13 @@ export const HomeScreen: React.FC = () => {
     const navigate = useNavigate();
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [refresh, setRefresh] = useState(0);
+    const [wizardPostponed, setWizardPostponed] = useState(false);
 
     const dateString = new Date().toLocaleDateString('es-ES', {
         weekday: 'long', day: 'numeric', month: 'long'
     });
     const [dashboard, setDashboard] = useState<DashboardData>({
-        calories: 0, gymDone: false, gymStreak: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0,
+        calories: 0, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0,
     });
     const { user } = useAuth();
     const { isDark, toggleTheme } = useTheme();
@@ -116,9 +118,26 @@ export const HomeScreen: React.FC = () => {
                 );
             }
 
-            // Gym: did she work out today?
+            // Gym: did she work out today? What's the weekly progress?
             const gymDone = gym?.history?.some(h => h.date === today) ?? false;
-            const gymStreak = gym?.streak ?? 0;
+            const gymGoal = gym?.goalDaysPerWeek ?? 5;
+
+            // Calculate weekly completed
+            const currentDay = new Date().getDay();
+            const diff = currentDay === 0 ? -6 : 1 - currentDay; // Adjust if Sunday
+            const monday = new Date();
+            monday.setDate(monday.getDate() + diff);
+            monday.setHours(0, 0, 0, 0);
+
+            let gymWeeklyCompleted = 0;
+            if (gym?.history) {
+                const weekDates = Array.from({ length: 7 }, (_, i) => {
+                    const d = new Date(monday);
+                    d.setDate(monday.getDate() + i);
+                    return d.toISOString().split('T')[0];
+                });
+                gymWeeklyCompleted = weekDates.filter(date => gym.history.some(h => h.date === date)).length;
+            }
 
             // Finance: today's expenses (filter by dateISO for reliability)
             const todaySpent = fin?.transactions
@@ -139,17 +158,19 @@ export const HomeScreen: React.FC = () => {
                 const nowLocal = new Date();
                 const hour = nowLocal.getHours();
 
-                for (let i = 5; i >= 0; i--) {
-                    const checkD = new Date(nowLocal);
-                    checkD.setDate(nowLocal.getDate() - i);
-                    const dStr = `${checkD.getFullYear()}-${String(checkD.getMonth() + 1).padStart(2, '0')}-${String(checkD.getDate()).padStart(2, '0')}`;
+                if (!wizardPostponed) {
+                    for (let i = 5; i >= 0; i--) {
+                        const checkD = new Date(nowLocal);
+                        checkD.setDate(nowLocal.getDate() - i);
+                        const dStr = `${checkD.getFullYear()}-${String(checkD.getMonth() + 1).padStart(2, '0')}-${String(checkD.getDate()).padStart(2, '0')}`;
 
-                    if (i === 0 && hour < 22) continue; // Si es hoy y es antes de las 10 PM, lo saltamos
+                        if (i === 0 && hour < 22) continue; // Si es hoy y es antes de las 10 PM, lo saltamos
 
-                    const entry = period.dailyEntries?.[dStr];
-                    if (!entry || !entry.moodLabel || entry.hasBled === undefined) {
-                        pendingReviewDate = dStr;
-                        break; // Se detiene en el más antiguo
+                        const entry = period.dailyEntries?.[dStr];
+                        if (!entry || !entry.moodLabel || entry.hasBled === undefined) {
+                            pendingReviewDate = dStr;
+                            break; // Se detiene en el más antiguo
+                        }
                     }
                 }
 
@@ -198,7 +219,7 @@ export const HomeScreen: React.FC = () => {
                 periodStatus = { isActive, isDayMissing, day, daysUntil };
             }
 
-            setDashboard({ calories, gymDone, gymStreak, todaySpent, goalsTotal, goalsDone, periodStatus, predictiveAlert, pendingReviewDate });
+            setDashboard({ calories, gymDone, gymGoal, gymWeeklyCompleted, todaySpent, goalsTotal, goalsDone, periodStatus, predictiveAlert, pendingReviewDate });
 
         });
     }, [user, refresh]);
@@ -267,9 +288,15 @@ export const HomeScreen: React.FC = () => {
                 <CycleDayModal
                     date={dashboard.pendingReviewDate}
                     requireWizard={true}
-                    onClose={() => {
-                        // After closing, we force a re-fetch so it pops up the NEXT missing day if any
-                        setRefresh(r => r + 1);
+                    onClose={(saved) => {
+                        if (saved) {
+                            // After saving, we force a re-fetch so it pops up the NEXT missing day if any
+                            setRefresh(r => r + 1);
+                        } else {
+                            // If postponed/cancelled, we hide it immediately for the session
+                            setWizardPostponed(true);
+                            setDashboard(prev => ({ ...prev, pendingReviewDate: null }));
+                        }
                     }}
                 />
             )}
@@ -467,27 +494,26 @@ export const HomeScreen: React.FC = () => {
                     {/* Gym Card */}
                     <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-start z-10">
-                            <div className="bg-orange-100 p-2 rounded-full text-orange-500">
+                            <div className="bg-emerald-100 p-2 rounded-full text-emerald-600">
                                 <span className="material-symbols-outlined text-lg">fitness_center</span>
                             </div>
-                            {dashboard.gymStreak > 0 && (
-                                <span className="text-xs font-bold text-orange-400 flex items-center gap-0.5">
-                                    {dashboard.gymStreak}<span className="material-symbols-outlined text-sm">local_fire_department</span>
-                                </span>
-                            )}
+                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-full border border-emerald-100 dark:border-emerald-800">
+                                {dashboard.gymWeeklyCompleted} / {dashboard.gymGoal}
+                            </span>
                         </div>
-                        <div className="z-10">
+                        <div className="z-10 mt-2">
                             <p className="font-bold text-slate-700 dark:text-slate-200">Gym</p>
-                            <p className="text-xs text-slate-400">
-                                Hoy: <span className={`font-bold ${dashboard.gymDone ? 'text-green-500' : 'text-rose-400'}`}>
-                                    {dashboard.gymDone ? 'Listo ✓' : 'Pendiente'}
-                                </span>
+                            <p className="text-[10px] text-slate-400 font-medium">
+                                Esta semana: <span className="font-bold text-emerald-500">{dashboard.gymWeeklyCompleted >= dashboard.gymGoal ? '¡Meta! ✨' : 'En progreso'}</span>
                             </p>
-                            <p className="text-[10px] text-orange-400 mt-1 font-bold">
-                                {dashboard.gymDone ? '¡Bien hecho, Nia! 💪' : '¡Tú puedes, Nia! 💪'}
-                            </p>
+                            <div className="w-full bg-emerald-50 dark:bg-black/20 h-1.5 rounded-full mt-2 overflow-hidden">
+                                <div
+                                    className="bg-emerald-400 h-1.5 rounded-full transition-all"
+                                    style={{ width: `${Math.min((dashboard.gymWeeklyCompleted / dashboard.gymGoal) * 100, 100)}%` }}
+                                ></div>
+                            </div>
                         </div>
-                        <div className="absolute -bottom-4 -right-4 bg-orange-50 w-24 h-24 rounded-full opacity-50 z-0 group-hover:scale-110 transition-transform"></div>
+                        <div className="absolute -bottom-4 -right-4 bg-emerald-50 w-24 h-24 rounded-full opacity-50 z-0 group-hover:scale-110 transition-transform"></div>
                     </div>
 
                     {/* Finance Card */}

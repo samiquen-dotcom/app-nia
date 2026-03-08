@@ -37,6 +37,13 @@ function App() {
               <Route path="/goals" element={<ProtectedRoute><GoalsScreen /></ProtectedRoute>} />
               <Route path="/debts" element={<ProtectedRoute><DebtsScreen /></ProtectedRoute>} />
             </Route>
+            <Route path="*" element={
+              <div className="flex flex-col items-center justify-center min-h-screen text-center bg-slate-50 dark:bg-[#1a0d10] dark:text-slate-200">
+                <h1 className="text-6xl mb-4">😿</h1>
+                <h2 className="text-xl font-bold">Página no encontrada</h2>
+                <a href="/home" className="text-pink-500 font-bold mt-4 underline">Volver al inicio</a>
+              </div>
+            } />
           </Routes>
         </BrowserRouter>
       </AuthProvider>
