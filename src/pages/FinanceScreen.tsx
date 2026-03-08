@@ -468,9 +468,9 @@ export const FinanceScreen: React.FC = () => {
 
             {/* ── Add Transaction Bottom Sheet ────────────────────────────────── */}
             {showAdd && (
-                <div className="fixed inset-0 z-[60] overflow-hidden touch-none">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-md pointer-events-auto" onClick={() => setShowAdd(false)} />
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2.5rem)] max-w-[400px] bg-white dark:bg-[#231218] rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden pointer-events-auto animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 overflow-hidden backdrop-blur-sm">
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowAdd(false)} />
+                    <div className="relative w-full max-w-[380px] mx-auto bg-white dark:bg-[#231218] rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
 
                         {/* Top spacing to avoid cutout on some mobile browsers */}
                         <div className="pt-2 sm:pt-0" />
@@ -480,7 +480,7 @@ export const FinanceScreen: React.FC = () => {
                             <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-600 mb-2" />
                         </div>
 
-                        <div className="px-6 pb-24 sm:pb-8 overflow-y-auto flex-1">
+                        <div className="px-6 pb-24 sm:pb-8 overflow-y-auto overflow-x-hidden flex-1 scrollbar-hide">
                             {/* Title */}
                             <div className="flex items-center justify-between mb-5">
                                 <h2 className="text-lg font-extrabold text-slate-800 dark:text-slate-100">
