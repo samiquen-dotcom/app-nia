@@ -468,16 +468,19 @@ export const FinanceScreen: React.FC = () => {
 
             {/* ── Add Transaction Bottom Sheet ────────────────────────────────── */}
             {showAdd && (
-                <div className="fixed inset-0 z-[60] flex flex-col justify-end">
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowAdd(false)} />
-                    <div className="relative w-full max-w-md mx-auto bg-white dark:bg-[#231218] rounded-t-3xl shadow-2xl max-h-[95vh] overflow-y-auto">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none p-4 pb-0 sm:pb-4">
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-auto" onClick={() => setShowAdd(false)} />
+                    <div className="relative w-full max-w-md bg-white dark:bg-[#231218] rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col pointer-events-auto transition-all animate-in slide-in-from-bottom-10">
 
-                        {/* Handle */}
-                        <div className="flex justify-center pt-3 pb-1">
-                            <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-600" />
+                        {/* Top spacing to avoid cutout on some mobile browsers */}
+                        <div className="pt-2 sm:pt-0" />
+
+                        {/* Handle / Header */}
+                        <div className="flex flex-col items-center pt-3 pb-1 border-b border-slate-50 dark:border-white/5">
+                            <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-600 mb-2" />
                         </div>
 
-                        <div className="px-6 pb-6">
+                        <div className="px-6 pb-24 sm:pb-8 overflow-y-auto flex-1">
                             {/* Title */}
                             <div className="flex items-center justify-between mb-5">
                                 <h2 className="text-lg font-extrabold text-slate-800 dark:text-slate-100">
