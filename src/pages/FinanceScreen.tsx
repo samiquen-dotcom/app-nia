@@ -470,7 +470,7 @@ export const FinanceScreen: React.FC = () => {
             {showAdd && (
                 <div className="fixed inset-0 z-[60] flex flex-col justify-end">
                     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowAdd(false)} />
-                    <div className="relative w-full bg-white dark:bg-[#231218] rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto">
+                    <div className="relative w-full max-w-md mx-auto bg-white dark:bg-[#231218] rounded-t-3xl shadow-2xl max-h-[95vh] overflow-y-auto">
 
                         {/* Handle */}
                         <div className="flex justify-center pt-3 pb-1">
