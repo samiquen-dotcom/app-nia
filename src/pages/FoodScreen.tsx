@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Webcam from "react-webcam";
 import { useFeatureData } from '../hooks/useFeatureData';
 import type { FoodData, FoodItem } from '../types';
 import { analyzeFoodImage } from '../services/geminiService';
@@ -19,15 +20,52 @@ export const FoodScreen: React.FC = () => {
     const [migrated, setMigrated] = useState(false);
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [showOptionsModal, setShowOptionsModal] = useState(false);
+    const [showCamera, setShowCamera] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const webcamRef = useRef<Webcam>(null);
 
     // Estado para el Modal del Smart Scanner
     const [scannedResult, setScannedResult] = useState<FoodAnalysisResult | null>(null);
     const [selectedDestinationMeal, setSelectedDestinationMeal] = useState<string>(MEAL_NAMES[0]);
 
     const handleCameraClick = () => {
+        console.log("Abriendo modal de opciones...");
+        setShowOptionsModal(true);
+    };
+
+    const handleOpenGallery = () => {
+        setShowOptionsModal(false);
         if (fileInputRef.current) {
             fileInputRef.current.click();
+        }
+    };
+
+    const handleOpenCamera = () => {
+        setShowOptionsModal(false);
+        setShowCamera(true);
+    };
+
+    const capturePhoto = useCallback(() => {
+        if (!webcamRef.current) return;
+        const imageSrc = webcamRef.current.getScreenshot();
+        if (imageSrc) {
+            setShowCamera(false);
+            processImageBase64(imageSrc);
+        }
+    }, [webcamRef]);
+
+    const processImageBase64 = async (base64data: string) => {
+        setIsAnalyzing(true);
+        setScannedResult(null);
+        try {
+            const result = await analyzeFoodImage(base64data);
+            setScannedResult(result);
+        } catch (error: any) {
+            alert('Error analizando la imagen: ' + (error.message || 'Desconocido'));
+        } finally {
+            setIsAnalyzing(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
@@ -35,26 +73,14 @@ export const FoodScreen: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        setIsAnalyzing(true);
-        setScannedResult(null); // Limpiar resultado anterior si hay
-
         const reader = new FileReader();
         reader.readAsDataURL(file);
-        reader.onloadend = async () => {
+        reader.onloadend = () => {
             const base64data = reader.result as string;
-            try {
-                const result = await analyzeFoodImage(base64data);
-                setScannedResult(result);
-            } catch (error: any) {
-                alert('Error analizando la imagen: ' + (error.message || 'Desconocido'));
-            } finally {
-                setIsAnalyzing(false);
-                if (fileInputRef.current) fileInputRef.current.value = '';
-            }
+            processImageBase64(base64data);
         };
         reader.onerror = () => {
             alert('Error leyendo el archivo');
-            setIsAnalyzing(false);
         };
     };
 
@@ -253,9 +279,12 @@ export const FoodScreen: React.FC = () => {
                 ))}
             </div>
             {/* Botón Flotante Global para Escanear */}
-            <div className="fixed bottom-24 right-6 z-40">
+            <div className="fixed bottom-24 right-6 z-[60]">
                 <button
-                    onClick={handleCameraClick}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        handleCameraClick();
+                    }}
                     disabled={isAnalyzing}
                     className={`flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-4 rounded-full shadow-lg transition-transform ${isAnalyzing ? 'opacity-70 scale-95' : 'hover:-translate-y-1'}`}
                 >
@@ -275,9 +304,70 @@ export const FoodScreen: React.FC = () => {
                 onChange={handleFileChange}
             />
 
+            {/* Opciones Iniciales (Cámara o Galería) */}
+            {showOptionsModal && (
+                <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-[#1a0d10] w-full max-w-sm rounded-3xl p-6 shadow-2xl flex flex-col gap-4">
+                        <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 text-center mb-2">Escanear Comida</h3>
+
+                        <button
+                            onClick={handleOpenCamera}
+                            className="bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 p-4 rounded-xl font-bold flex items-center gap-3 hover:bg-emerald-100 transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-2xl">photo_camera</span>
+                            Tomar Foto ahora
+                        </button>
+
+                        <button
+                            onClick={handleOpenGallery}
+                            className="bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 p-4 rounded-xl font-bold flex items-center gap-3 hover:bg-indigo-100 transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-2xl">imagesmode</span>
+                            Subir desde Galería / Archivos
+                        </button>
+
+                        <button
+                            onClick={() => setShowOptionsModal(false)}
+                            className="p-3 text-slate-400 font-bold hover:text-slate-600 dark:hover:text-slate-200 mt-2"
+                        >
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Interfaz de Cámara en Vivo */}
+            {showCamera && (
+                <div className="fixed inset-0 z-[80] bg-black flex flex-col animate-in fade-in duration-200">
+                    <div className="flex-1 relative flex items-center justify-center">
+                        <Webcam
+                            audio={false}
+                            ref={webcamRef}
+                            screenshotFormat="image/jpeg"
+                            videoConstraints={{ facingMode: "environment" }}
+                            className="w-full h-full object-cover"
+                        />
+                        <button
+                            onClick={() => setShowCamera(false)}
+                            className="absolute top-6 left-6 w-12 h-12 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur-md"
+                        >
+                            <span className="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+
+                    <div className="h-32 bg-black flex items-center justify-center pb-8 shrink-0">
+                        <button
+                            onClick={capturePhoto}
+                            className="w-20 h-20 bg-white rounded-full border-4 border-slate-300 active:scale-95 transition-transform"
+                        >
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Modal Inteligente de Resultados */}
             {scannedResult && (
-                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+                <div className="fixed inset-0 z-[90] bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
                     <div className="bg-white dark:bg-[#1a0d10] w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                         {/* Cabecera modal */}
                         <div className="p-6 pb-4 border-b border-slate-100 dark:border-[#5a2b35]/20 flex justify-between items-start">
