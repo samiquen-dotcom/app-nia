@@ -146,6 +146,17 @@ export interface FoodItem {
     id: number;
     name: string;
     calories: number;
+    portion?: string;
+    confidence?: number;
+    macros?: {
+        protein: number;
+        carbs: number;
+        fats: number;
+    };
+    ingredients?: Array<{
+        name: string;
+        calories: number;
+    }>;
 }
 
 export interface FoodDay {

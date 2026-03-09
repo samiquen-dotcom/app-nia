@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFeatureData } from '../hooks/useFeatureData';
 import type { FoodData, FoodItem } from '../types';
+import { analyzeFoodImage } from '../services/geminiService';
+import type { FoodAnalysisResult } from '../services/geminiService';
 
 const MEAL_NAMES = ['Desayuno', 'Almuerzo', 'Cena', 'Snacks'] as const;
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -15,6 +17,70 @@ export const FoodScreen: React.FC = () => {
     const [newItemCal, setNewItemCal] = useState('');
     const [activeMeal, setActiveMeal] = useState<string | null>(null);
     const [migrated, setMigrated] = useState(false);
+
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Estado para el Modal del Smart Scanner
+    const [scannedResult, setScannedResult] = useState<FoodAnalysisResult | null>(null);
+    const [selectedDestinationMeal, setSelectedDestinationMeal] = useState<string>(MEAL_NAMES[0]);
+
+    const handleCameraClick = () => {
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsAnalyzing(true);
+        setScannedResult(null); // Limpiar resultado anterior si hay
+
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onloadend = async () => {
+            const base64data = reader.result as string;
+            try {
+                const result = await analyzeFoodImage(base64data);
+                setScannedResult(result);
+            } catch (error: any) {
+                alert('Error analizando la imagen: ' + (error.message || 'Desconocido'));
+            } finally {
+                setIsAnalyzing(false);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            }
+        };
+        reader.onerror = () => {
+            alert('Error leyendo el archivo');
+            setIsAnalyzing(false);
+        };
+    };
+
+    const saveScannedFood = () => {
+        if (!scannedResult) return;
+        const currentMeals = todayFood?.meals ?? emptyMeals();
+        const meal = selectedDestinationMeal;
+
+        const newEntry: FoodItem = {
+            id: Date.now(),
+            name: scannedResult.name,
+            calories: scannedResult.calories,
+            portion: scannedResult.portion,
+            confidence: scannedResult.confidence,
+            macros: scannedResult.macros,
+            ingredients: scannedResult.ingredients
+        };
+
+        const updatedMeal = [...(currentMeals[meal] || []), newEntry];
+        const updatedMeals = { ...currentMeals, [meal]: updatedMeal };
+        const otherDays = data.days.filter(d => d.date !== today);
+
+        save({ days: [{ date: today, meals: updatedMeals }, ...otherDays] });
+        setScannedResult(null); // Cerrar el modal
+        setActiveMeal(meal); // Abrir el acordeón para mostrarlo
+    };
 
     const today = todayStr();
     const todayFood = data.days.find(d => d.date === today);
@@ -186,6 +252,129 @@ export const FoodScreen: React.FC = () => {
                     </div>
                 ))}
             </div>
+            {/* Botón Flotante Global para Escanear */}
+            <div className="fixed bottom-24 right-6 z-40">
+                <button
+                    onClick={handleCameraClick}
+                    disabled={isAnalyzing}
+                    className={`flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-4 rounded-full shadow-lg transition-transform ${isAnalyzing ? 'opacity-70 scale-95' : 'hover:-translate-y-1'}`}
+                >
+                    <span className={`material-symbols-outlined text-xl ${isAnalyzing ? 'animate-spin' : ''}`}>
+                        {isAnalyzing ? 'progress_activity' : 'document_scanner'}
+                    </span>
+                    <span className="font-bold">{isAnalyzing ? 'Analizando...' : 'Escanear'}</span>
+                </button>
+            </div>
+
+            {/* Input oculto para carga de imágenes IA */}
+            <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                className="hidden"
+                onChange={handleFileChange}
+            />
+
+            {/* Modal Inteligente de Resultados */}
+            {scannedResult && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-[#1a0d10] w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        {/* Cabecera modal */}
+                        <div className="p-6 pb-4 border-b border-slate-100 dark:border-[#5a2b35]/20 flex justify-between items-start">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 leading-tight">
+                                    {scannedResult.name}
+                                </h3>
+                                <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{scannedResult.portion}</p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                                <span className="text-2xl font-black text-emerald-500">{scannedResult.calories}</span>
+                                <span className="text-xs text-slate-400 block font-bold uppercase tracking-wider">Kcal Totales</span>
+                            </div>
+                        </div>
+
+                        {/* Cuerpo Scrolleable */}
+                        <div className="p-6 overflow-y-auto">
+                            {/* Nivel de Confianza */}
+                            <div className="flex items-center gap-3 mb-6 bg-slate-50 dark:bg-[#2d1820]/50 p-3 rounded-2xl border border-slate-100 dark:border-[#5a2b35]/20">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white ${scannedResult.confidence >= 80 ? 'bg-emerald-400' : scannedResult.confidence >= 50 ? 'bg-orange-400' : 'bg-rose-400'}`}>
+                                    {scannedResult.confidence}%
+                                </div>
+                                <div>
+                                    <div className="text-sm font-bold text-slate-700 dark:text-slate-200">Confianza de IA</div>
+                                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                                        {scannedResult.confidence >= 80 ? 'Análisis altamente preciso.' : 'Es una estimación visual.'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Macros */}
+                            <div className="mb-6">
+                                <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Macronutrientes</h4>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-2xl text-center border border-blue-100/50 dark:border-blue-900/30">
+                                        <div className="text-lg font-black text-blue-600 dark:text-blue-400">{scannedResult.macros.protein}g</div>
+                                        <div className="text-xs font-bold text-blue-500/70 dark:text-blue-400/70">Proteína</div>
+                                    </div>
+                                    <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-2xl text-center border border-orange-100/50 dark:border-orange-900/30">
+                                        <div className="text-lg font-black text-orange-600 dark:text-orange-400">{scannedResult.macros.carbs}g</div>
+                                        <div className="text-xs font-bold text-orange-500/70 dark:text-orange-400/70">Carbs</div>
+                                    </div>
+                                    <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-2xl text-center border border-yellow-100/50 dark:border-yellow-900/30">
+                                        <div className="text-lg font-black text-yellow-600 dark:text-yellow-400">{scannedResult.macros.fats}g</div>
+                                        <div className="text-xs font-bold text-yellow-500/70 dark:text-yellow-400/70">Grasas</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Ingredientes */}
+                            {scannedResult.ingredients && scannedResult.ingredients.length > 0 && (
+                                <div className="mb-6">
+                                    <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Análisis de Ingredientes</h4>
+                                    <div className="space-y-2">
+                                        {scannedResult.ingredients.map((ing, idx) => (
+                                            <div key={idx} className="flex justify-between items-center bg-white dark:bg-[#2d1820] p-3 rounded-xl border border-slate-100 dark:border-[#5a2b35]/30">
+                                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{ing.name}</span>
+                                                <span className="text-sm font-bold text-slate-400">{ing.calories} kcal</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Selector Destino */}
+                            <div className="mb-2">
+                                <label className="block text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">¿A dónde lo guardamos?</label>
+                                <select
+                                    className="w-full bg-slate-50 dark:bg-[#2d1820] border border-slate-200 dark:border-[#5a2b35]/40 text-slate-700 dark:text-slate-200 p-3 rounded-xl font-medium focus:outline-none focus:border-indigo-400"
+                                    value={selectedDestinationMeal}
+                                    onChange={(e) => setSelectedDestinationMeal(e.target.value)}
+                                >
+                                    {MEAL_NAMES.map(m => (
+                                        <option key={m} value={m}>{m}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Pie del modal / Botones de acción */}
+                        <div className="p-4 bg-slate-50 dark:bg-[#2d1820]/30 border-t border-slate-100 dark:border-[#5a2b35]/20 flex gap-3">
+                            <button
+                                onClick={() => setScannedResult(null)}
+                                className="flex-1 py-3 px-4 rounded-xl font-bold text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-[#5a2b35]/30 transition-colors"
+                            >
+                                Descartar
+                            </button>
+                            <button
+                                onClick={saveScannedFood}
+                                className="flex-[2] py-3 px-4 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/20 transition-all active:scale-95"
+                            >
+                                Guardar Comida
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
