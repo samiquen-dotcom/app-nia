@@ -161,7 +161,7 @@ export interface FoodItem {
 
 export interface FoodDay {
     date: string;
-    meals: Record<string, FoodItem[]>;
+    items: FoodItem[];
 }
 
 export interface FoodData {

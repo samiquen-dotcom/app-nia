@@ -113,9 +113,7 @@ export const HomeScreen: React.FC = () => {
             const todayFood = food?.days?.find(d => d.date === today);
             let calories = 0;
             if (todayFood) {
-                Object.values(todayFood.meals).forEach((items: any[]) =>
-                    items.forEach(i => { calories += i.calories; })
-                );
+                calories = todayFood.items?.reduce((sum: number, item: any) => sum + item.calories, 0) || 0;
             }
 
             // Gym: did she work out today? What's the weekly progress?
