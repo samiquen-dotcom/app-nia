@@ -76,6 +76,28 @@ export const PeriodScreen: React.FC = () => {
         return { entry, dStr };
     };
 
+    // ─── Fertility Calculation ────────────────────────────────────────────────
+    const isFertileDay = (dStr: string): { isFertile: boolean; isPeak: boolean } => {
+        if (!data.cycleStartDate) return { isFertile: false, isPeak: false };
+
+        const predictions = getPredictions(data.cycleStartDate, data.cycleLength);
+        if (!predictions.fertileWindow) return { isFertile: false, isPeak: false };
+
+        const date = new Date(dStr + 'T00:00:00');
+        const fertileStart = new Date(predictions.fertileWindow.start + 'T00:00:00');
+        const fertileEnd = new Date(predictions.fertileWindow.end + 'T00:00:00');
+
+        // Calculate ovulation day (peak fertility)
+        const ovulationDay = new Date(fertileStart);
+        ovulationDay.setDate(fertileStart.getDate() + 4); // Ovulation is approximately in the middle
+
+        const isFertile = date >= fertileStart && date <= fertileEnd;
+        const isPeak = date.getTime() === ovulationDay.getTime() ||
+                       Math.abs(date.getTime() - ovulationDay.getTime()) < 86400000; // Within 1 day
+
+        return { isFertile, isPeak };
+    };
+
     // --- Statistics Calculations ---
     const dailyEntriesArr = Object.values(data.dailyEntries || {});
     const availableStatsMonths = Array.from(new Set(dailyEntriesArr.map(e => e.date.substring(0, 7)))).sort().reverse();
@@ -250,26 +272,42 @@ export const PeriodScreen: React.FC = () => {
                         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
                             const { entry, dStr } = getDayContent(d);
                             const isToday = dStr === today;
+                            const { isFertile, isPeak } = isFertileDay(dStr);
+
                             let bg = 'bg-transparent';
                             let text = 'text-slate-600 dark:text-slate-400';
                             let border = 'border-transparent';
+                            let fertilityIcon = null;
 
-                            if (isToday) {
+                            // Priority: Period > Fertile > Today > Normal
+                            if (entry?.hasBled) {
+                                bg = 'bg-rose-500';
+                                text = 'text-white font-bold';
+                            } else if (isFertile) {
+                                if (isPeak) {
+                                    bg = 'bg-emerald-500';
+                                    text = 'text-white font-bold';
+                                    fertilityIcon = '🥚';
+                                } else {
+                                    bg = 'bg-emerald-100 dark:bg-emerald-900/30';
+                                    text = 'text-emerald-600 dark:text-emerald-300 font-bold';
+                                }
+                            } else if (entry) {
+                                bg = 'bg-rose-100 dark:bg-rose-900/30';
+                                text = 'text-rose-600 dark:text-rose-300 font-bold';
+                            } else if (isToday) {
                                 border = 'border-slate-800 dark:border-slate-100';
                                 text = 'font-bold text-slate-800 dark:text-slate-100';
                             }
-                            if (entry) {
-                                bg = 'bg-rose-100 dark:bg-rose-900/30';
-                                text = 'text-rose-600 dark:text-rose-300 font-bold';
-                                if (entry.hasBled) {
-                                    bg = 'bg-rose-500';
-                                    text = 'text-white font-bold';
-                                }
-                            }
 
                             return (
-                                <div key={d} onClick={() => onDayClick(dStr)} className={`aspect-square rounded-full flex flex-col items-center justify-center text-xs border cursor-pointer relative ${bg} ${text} ${border}`}>
-                                    <span>{d}</span>
+                                <div
+                                    key={d}
+                                    onClick={() => onDayClick(dStr)}
+                                    className={`aspect-square rounded-full flex flex-col items-center justify-center text-xs border cursor-pointer relative ${bg} ${text} ${border}`}
+                                    title={isFertile ? (isPeak ? 'Día de mayor fertilidad 🥚' : 'Ventana fértil') : ''}
+                                >
+                                    <span className="flex items-center gap-0.5">{fertilityIcon}{d}</span>
                                     <div className="flex gap-0.5 mt-0.5">
                                         {entry?.flow === 'light' && <div className="w-1 h-1 bg-white rounded-full" />}
                                         {entry?.flow === 'medium' && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
@@ -281,6 +319,39 @@ export const PeriodScreen: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* ── Leyenda de Fertilidad ───────────────────────────────────────── */}
+            {data.cycleStartDate && (
+                <div className="px-6 mb-6 max-w-lg mx-auto w-full">
+                    <div className="bg-gradient-to-br from-emerald-50 to-white dark:from-[#1a3a2a] dark:to-[#1a0d10] p-4 rounded-2xl shadow-sm border border-emerald-100 dark:border-emerald-900/30">
+                        <h4 className="text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-sm">egg</span>
+                            Leyenda de Fertilidad
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-rose-500 flex items-center justify-center text-[8px] text-white font-bold">🩸</div>
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300 font-medium">Periodo</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-[8px] text-white font-bold">🥚</div>
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300 font-medium">Ovulación (alta)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-[8px] text-emerald-600 dark:text-emerald-300 font-bold">●</div>
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300 font-medium">Ventana fértil</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-transparent border-2 border-slate-800 dark:border-slate-100 flex items-center justify-center text-[8px] text-slate-800 dark:text-slate-100 font-bold">○</div>
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300 font-medium">Día actual</span>
+                            </div>
+                        </div>
+                        <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-3 text-center">
+                            ⚠️ La fertilidad es una estimación. Tu ciclo real puede variar.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* ── Tus Estadísticas ───────────────────────────────────────────── */}
             <div className="px-6 mb-10 w-full">
