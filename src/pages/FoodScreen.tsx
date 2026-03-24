@@ -64,6 +64,10 @@ export const FoodScreen: React.FC = () => {
     const [editingItem, setEditingItem] = useState<{ item: FoodItem } | null>(null);
     const [editForm, setEditForm] = useState({ name: '', calories: '', protein: '', carbs: '', fats: '' });
 
+    // Estado para mover comida a otro día
+    const [movingItem, setMovingItem] = useState<{ item: FoodItem } | null>(null);
+    const [showMoveModal, setShowMoveModal] = useState(false);
+
     // ─── Navegación por calendario ─────────────────────────────────────────────
     const goToPreviousDay = () => {
         const prev = new Date(selectedDate);
@@ -255,6 +259,46 @@ export const FoodScreen: React.FC = () => {
             carbs: String(item.macros?.carbs || ''),
             fats: String(item.macros?.fats || '')
         });
+    };
+
+    // ─── Mover comida a otro día ───────────────────────────────────────────────
+    const openMoveModal = (item: FoodItem) => {
+        setMovingItem({ item });
+        setShowMoveModal(true);
+    };
+
+    const moveItemToDate = (targetDate: string) => {
+        if (!movingItem) return;
+
+        // Obtener items del día origen (selectedDate)
+        const currentDay = data.days.find(d => d.date === selectedDate);
+        const currentItems = currentDay?.items ?? [];
+
+        // Obtener items del día destino
+        const targetDay = data.days.find(d => d.date === targetDate);
+        const targetItems = targetDay?.items ?? [];
+
+        // Filtrar item del día origen
+        const updatedCurrentItems = currentItems.filter(i => i.id !== movingItem.item.id);
+
+        // Agregar item al día destino (con nuevo ID para evitar duplicados)
+        const movedItem = { ...movingItem.item, id: Date.now() };
+        const updatedTargetItems = [...targetItems, movedItem];
+
+        // Construir nuevo array de días
+        let newDays = data.days.filter(d => d.date !== selectedDate && d.date !== targetDate);
+
+        if (updatedCurrentItems.length > 0) {
+            newDays = [{ date: selectedDate, items: updatedCurrentItems }, ...newDays];
+        }
+
+        newDays = [{ date: targetDate, items: updatedTargetItems }, ...newDays];
+
+        save({ days: newDays });
+
+        setShowMoveModal(false);
+        setMovingItem(null);
+        setExpandedItemId(null);
     };
 
     const saveEdit = () => {
@@ -533,6 +577,13 @@ export const FoodScreen: React.FC = () => {
                                         >
                                             <span className="material-symbols-outlined text-sm">edit</span>
                                             Editar
+                                        </button>
+                                        <button
+                                            onClick={() => openMoveModal(item)}
+                                            className="flex-1 py-2.5 px-4 rounded-xl font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <span className="material-symbols-outlined text-sm">drive_file_move</span>
+                                            Mover
                                         </button>
                                         <button
                                             onClick={() => removeFood(item.id)}
@@ -917,6 +968,59 @@ export const FoodScreen: React.FC = () => {
                                 Guardar
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Modal para Mover Comida ───────────────────────────────────── */}
+            {showMoveModal && movingItem && (
+                <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-[#1a0d10] w-full max-w-sm rounded-3xl p-6 shadow-2xl">
+                        <div className="text-center mb-6">
+                            <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span className="material-symbols-outlined text-amber-500 text-3xl">drive_file_move</span>
+                            </div>
+                            <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 mb-1">
+                                Mover "{movingItem.item.name}"
+                            </h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                ¿A qué día querés mover esta comida?
+                            </p>
+                        </div>
+
+                        <div className="space-y-2 mb-6 max-h-64 overflow-y-auto">
+                            {/* Últimos 7 días */}
+                            {getLast7Days().map((date) => {
+                                if (date === selectedDate) return null; // No mostrar el día actual
+                                const isToday = date === todayStr();
+                                const isYesterday = date === formatDate(new Date(Date.now() - 86400000));
+
+                                return (
+                                    <button
+                                        key={date}
+                                        onClick={() => moveItemToDate(date)}
+                                        className="w-full py-4 px-4 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-[#2d1820] hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:border-amber-400 border-2 border-transparent transition-all flex items-center justify-between"
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className={`material-symbols-outlined ${isToday ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                                {isToday ? 'today' : 'calendar_today'}
+                                            </span>
+                                            {isToday ? 'Hoy' : isYesterday ? 'Ayer' : getFriendlyDateName(date)}
+                                        </span>
+                                        <span className="text-xs text-slate-400">
+                                            {date}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <button
+                            onClick={() => { setShowMoveModal(false); setMovingItem(null); }}
+                            className="w-full py-3 px-4 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#2d1820] transition-colors"
+                        >
+                            Cancelar
+                        </button>
                     </div>
                 </div>
             )}
