@@ -172,6 +172,7 @@ export const FinanceScreen: React.FC = () => {
     const [newAccountName, setNewAccountName] = useState('');
     const [newAccountEmoji, setNewAccountEmoji] = useState('💳');
     const [newAccountBalance, setNewAccountBalance] = useState('');
+    const [isAddingAccount, setIsAddingAccount] = useState(false);
 
     // ─── Computed ───────────────────────────────────────────────────────────────
     // Using persisted balances from data.accounts
@@ -379,7 +380,9 @@ export const FinanceScreen: React.FC = () => {
 
     // ── Add Account Functions ───────────────────────────────────────────────
     const addCustomAccount = async () => {
-        if (!newAccountName.trim()) return;
+        if (!newAccountName.trim() || isAddingAccount) return;
+
+        setIsAddingAccount(true);
 
         const newAccount: FinanceAccount = {
             id: `custom_${Date.now()}`,
@@ -388,16 +391,25 @@ export const FinanceScreen: React.FC = () => {
             balance: parseFloat(newAccountBalance) || 0,
         };
 
-        await save({ accounts: [...accounts, newAccount] });
-        setShowAddAccount(false);
-        setNewAccountName('');
-        setNewAccountEmoji('💳');
-        setNewAccountBalance('');
+        try {
+            await save({ accounts: [...accounts, newAccount] });
+            setShowAddAccount(false);
+            setNewAccountName('');
+            setNewAccountEmoji('💳');
+            setNewAccountBalance('');
+            alert(`✅ Cuenta "${newAccount.name}" agregada exitosamente`);
+        } catch (error) {
+            alert('❌ Error al agregar la cuenta. Intentá de nuevo.');
+            console.error(error);
+        } finally {
+            setIsAddingAccount(false);
+        }
     };
 
     const deleteCustomAccount = async (accountId: string) => {
         if (confirm('¿Eliminar esta cuenta? Se eliminarán también los movimientos asociados.')) {
             await save({ accounts: accounts.filter(a => a.id !== accountId) });
+            alert('✅ Cuenta eliminada');
         }
     };
 
@@ -483,14 +495,15 @@ export const FinanceScreen: React.FC = () => {
                         return (
                             <div
                                 key={acc.id}
-                                className={`bg-gradient-to-br ${meta.gradient} rounded-2xl p-4 shadow-lg transition-all hover:scale-105 relative group`}
+                                className={`bg-gradient-to-br ${meta.gradient} rounded-2xl p-4 shadow-lg transition-all hover:scale-105 relative`}
                             >
                                 {isCustom && (
                                     <button
                                         onClick={() => deleteCustomAccount(acc.id)}
-                                        className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
+                                        className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform"
+                                        title="Eliminar cuenta"
                                     >
-                                        <span className="material-symbols-outlined text-xs">close</span>
+                                        <span className="material-symbols-outlined text-xs">delete</span>
                                     </button>
                                 )}
                                 <div className="flex items-center justify-between mb-2">
@@ -1176,16 +1189,24 @@ export const FinanceScreen: React.FC = () => {
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setShowAddAccount(false)}
-                                className="flex-1 bg-slate-100 dark:bg-[#3a2028] text-slate-500 py-3 rounded-2xl font-bold text-sm"
+                                disabled={isAddingAccount}
+                                className="flex-1 bg-slate-100 dark:bg-[#3a2028] text-slate-500 py-3 rounded-2xl font-bold text-sm disabled:opacity-50"
                             >
                                 Cancelar
                             </button>
                             <button
                                 onClick={addCustomAccount}
-                                disabled={!newAccountName.trim()}
-                                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 rounded-2xl font-bold text-sm shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={!newAccountName.trim() || isAddingAccount}
+                                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 rounded-2xl font-bold text-sm shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                Agregar Cuenta
+                                {isAddingAccount ? (
+                                    <>
+                                        <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                                        Guardando...
+                                    </>
+                                ) : (
+                                    'Agregar Cuenta'
+                                )}
                             </button>
                         </div>
                     </div>
