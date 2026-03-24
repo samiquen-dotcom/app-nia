@@ -12,11 +12,25 @@ export interface CustomCategory {
 
 export interface Transaction {
     id: number;
-    type: 'income' | 'expense';
+    type: 'income' | 'expense' | 'transfer';
     accountId: string;
     amount: number;
     category: string;
     emoji: string;
+    description: string;
+    dateISO: string;
+    date: string;
+    // Para transferencias
+    fromAccountId?: string;
+    toAccountId?: string;
+}
+
+export interface TransferTransaction {
+    id: number;
+    type: 'transfer';
+    fromAccountId: string;
+    toAccountId: string;
+    amount: number;
     description: string;
     dateISO: string;
     date: string;

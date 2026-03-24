@@ -166,6 +166,105 @@ export const FirestoreService = {
         }
     },
 
+    // Agregar transferencia entre cuentas
+    addTransfer: async (userId: string, transfer: {
+        id: number;
+        type: 'transfer';
+        fromAccountId: string;
+        toAccountId: string;
+        amount: number;
+        description: string;
+        dateISO: string;
+        date: string;
+    }) => {
+        const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);
+        const txCollectionRef = collection(financeRef, 'transactions');
+
+        try {
+            await runTransaction(db, async (transaction) => {
+                const financeDoc = await transaction.get(financeRef);
+                const financeData = financeDoc.exists() ? financeDoc.data() : { accounts: [], monthStats: {} };
+
+                let accounts: FinanceAccount[] = (financeData.accounts && financeData.accounts.length > 0)
+                    ? financeData.accounts as FinanceAccount[]
+                    : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+
+                // Restar de cuenta origen
+                const fromIndex = accounts.findIndex(a => a.id === transfer.fromAccountId);
+                if (fromIndex >= 0) {
+                    const currentBalance = accounts[fromIndex].balance ?? accounts[fromIndex].initialBalance ?? 0;
+                    accounts[fromIndex].balance = currentBalance - transfer.amount;
+                }
+
+                // Sumar a cuenta destino
+                const toIndex = accounts.findIndex(a => a.id === transfer.toAccountId);
+                if (toIndex >= 0) {
+                    const currentBalance = accounts[toIndex].balance ?? accounts[toIndex].initialBalance ?? 0;
+                    accounts[toIndex].balance = currentBalance + transfer.amount;
+                }
+
+                // Guardar transacción de transferencia
+                const newTxRef = doc(txCollectionRef, String(transfer.id));
+                transaction.set(newTxRef, transfer);
+
+                // Actualizar documento principal
+                transaction.set(financeRef, {
+                    accounts,
+                    monthStats: financeData.monthStats || {},
+                    customCategories: financeData.customCategories || [],
+                    transactions: deleteField()
+                }, { merge: true });
+            });
+        } catch (e) {
+            console.error("Error adding transfer:", e);
+            throw e;
+        }
+    },
+
+    // Eliminar transferencia y revertir balances
+    deleteTransfer: async (userId: string, transfer: {
+        id: number;
+        type: 'transfer';
+        fromAccountId: string;
+        toAccountId: string;
+        amount: number;
+    }) => {
+        const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);
+        const txRef = doc(db, `users/${userId}/features/${Features.FINANCE}/transactions`, String(transfer.id));
+
+        try {
+            await runTransaction(db, async (transaction) => {
+                const financeDoc = await transaction.get(financeRef);
+                if (!financeDoc.exists()) throw "Finance doc missing";
+
+                const financeData = financeDoc.data();
+                let accounts: FinanceAccount[] = (financeData.accounts && financeData.accounts.length > 0)
+                    ? financeData.accounts as FinanceAccount[]
+                    : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+
+                // Revertir: sumar a cuenta origen
+                const fromIndex = accounts.findIndex(a => a.id === transfer.fromAccountId);
+                if (fromIndex >= 0) {
+                    const currentBalance = accounts[fromIndex].balance ?? accounts[fromIndex].initialBalance ?? 0;
+                    accounts[fromIndex].balance = currentBalance + transfer.amount;
+                }
+
+                // Revertir: restar de cuenta destino
+                const toIndex = accounts.findIndex(a => a.id === transfer.toAccountId);
+                if (toIndex >= 0) {
+                    const currentBalance = accounts[toIndex].balance ?? accounts[toIndex].initialBalance ?? 0;
+                    accounts[toIndex].balance = currentBalance - transfer.amount;
+                }
+
+                transaction.delete(txRef);
+                transaction.set(financeRef, { accounts }, { merge: true });
+            });
+        } catch (e) {
+            console.error("Error deleting transfer:", e);
+            throw e;
+        }
+    },
+
     // Eliminar transacción y revertir balances
     deleteTransaction: async (userId: string, tx: Trade) => {
         const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);
