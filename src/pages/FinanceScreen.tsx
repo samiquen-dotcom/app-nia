@@ -52,6 +52,13 @@ const fmt = (n: number) => {
 
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7); // YYYY-MM
 
+// Formatear nombre del mes para mostrar (ej: "2025-03" → "Marzo 2025")
+const formatMonthName = (monthStr: string) => {
+    const [year, month] = monthStr.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+    return date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+};
+
 const exportCSV = (transactions: Transaction[], accounts: FinanceAccount[]) => {
     const header = 'Tipo,Cuenta,Categoría,Descripción,Monto,Fecha\n';
     const rows = transactions.map(t => {
@@ -165,7 +172,21 @@ export const FinanceScreen: React.FC = () => {
     const total = accounts.reduce((s, a) => s + (a.balance ?? a.initialBalance), 0);
 
     const thisMonth = getCurrentMonth();
-    const currentMonthStats = data.monthStats?.[thisMonth] || { income: 0, expense: 0, categories: {} };
+
+    // Selector de meses
+    const [selectedMonth, setSelectedMonth] = useState(thisMonth);
+
+    // Obtener todos los meses con datos disponibles
+    const availableMonths = useMemo(() => {
+        const months = Object.keys(data.monthStats || {}).sort().reverse();
+        // Asegurar que el mes actual esté incluido
+        if (!months.includes(thisMonth)) {
+            months.unshift(thisMonth);
+        }
+        return months;
+    }, [data.monthStats, thisMonth]);
+
+    const currentMonthStats = data.monthStats?.[selectedMonth] || { income: 0, expense: 0, categories: {} };
 
     const monthIn = currentMonthStats.income;
     const monthOut = currentMonthStats.expense;
@@ -181,7 +202,7 @@ export const FinanceScreen: React.FC = () => {
             .slice(0, 5);
     }, [currentMonthStats]);
 
-    // Stats de ingresos por categoría
+    // Stats de ingresos por categoría (basado en transacciones cargadas)
     const incomeCatStats = useMemo(() => {
         const incomeByCategory: Record<string, { total: number; emoji: string }> = {};
 
@@ -468,11 +489,11 @@ export const FinanceScreen: React.FC = () => {
             </div>
 
             {/* ── Category Stats ──────────────────────────────────────────────── */}
-            {(catStats.length > 0 || incomeCatStats.length > 0) && (
+            {(catStats.length > 0 || incomeCatStats.length > 0 || availableMonths.length > 0) && (
                 <div className="mx-6 mb-5 bg-white dark:bg-[#2d1820] rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-[#5a2b35]/30">
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">
-                            {showIncomeStats ? '💰 En qué gané más este mes' : '💸 En qué gasté más este mes'}
+                            {showIncomeStats ? '💰 En qué gané más' : '💸 En qué gasté más'}
                         </h3>
                         {/* Toggle */}
                         <div className="flex bg-slate-100 dark:bg-[#1a0d10] rounded-full p-1">
@@ -497,6 +518,57 @@ export const FinanceScreen: React.FC = () => {
                                 Ingresos
                             </button>
                         </div>
+                    </div>
+
+                    {/* Selector de Mes */}
+                    <div className="mb-4">
+                        <div className="flex items-center justify-between gap-2">
+                            <button
+                                onClick={() => {
+                                    const idx = availableMonths.indexOf(selectedMonth);
+                                    if (idx < availableMonths.length - 1) {
+                                        setSelectedMonth(availableMonths[idx + 1]);
+                                    }
+                                }}
+                                disabled={selectedMonth === availableMonths[availableMonths.length - 1]}
+                                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#3a2028] flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-[#5a2b35] transition-colors"
+                            >
+                                <span className="material-symbols-outlined text-sm">chevron_left</span>
+                            </button>
+
+                            <select
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                className="bg-slate-100 dark:bg-[#3a2028] border-0 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer"
+                            >
+                                {availableMonths.map(month => (
+                                    <option key={month} value={month}>
+                                        {formatMonthName(month)}
+                                    </option>
+                                ))}
+                            </select>
+
+                            <button
+                                onClick={() => {
+                                    const idx = availableMonths.indexOf(selectedMonth);
+                                    if (idx > 0) {
+                                        setSelectedMonth(availableMonths[idx - 1]);
+                                    }
+                                }}
+                                disabled={selectedMonth === availableMonths[0]}
+                                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#3a2028] flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-200 dark:hover:bg-[#5a2b35] transition-colors"
+                            >
+                                <span className="material-symbols-outlined text-sm">chevron_right</span>
+                            </button>
+                        </div>
+                        {selectedMonth !== thisMonth && (
+                            <button
+                                onClick={() => setSelectedMonth(thisMonth)}
+                                className="w-full mt-2 text-xs text-emerald-500 font-bold hover:text-emerald-600"
+                            >
+                                Volver al mes actual
+                            </button>
+                        )}
                     </div>
 
                     {showIncomeStats ? (
@@ -525,7 +597,7 @@ export const FinanceScreen: React.FC = () => {
                                 })}
                             </div>
                         ) : (
-                            <p className="text-center text-sm text-slate-400 py-4">Sin ingresos este mes</p>
+                            <p className="text-center text-sm text-slate-400 py-4">Sin ingresos en {formatMonthName(selectedMonth)}</p>
                         )
                     ) : (
                         /* Expense Stats */
@@ -553,7 +625,7 @@ export const FinanceScreen: React.FC = () => {
                                 })}
                             </div>
                         ) : (
-                            <p className="text-center text-sm text-slate-400 py-4">Sin gastos este mes</p>
+                            <p className="text-center text-sm text-slate-400 py-4">Sin gastos en {formatMonthName(selectedMonth)}</p>
                         )
                     )}
                 </div>
@@ -992,7 +1064,7 @@ export const FinanceScreen: React.FC = () => {
                 </div>
             )}
 
-            {/* ── Delete Confirm Modal ─────────────────────────────────────────── */}
+            {/* ── Delete Confirm Modal ─────���───────────────────────────────────── */}
             {showDelModal !== null && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6" onClick={() => setShowDelModal(null)}>
                     <div className="bg-white dark:bg-[#2d1820] rounded-3xl p-6 w-full max-w-xs shadow-2xl text-center" onClick={e => e.stopPropagation()}>

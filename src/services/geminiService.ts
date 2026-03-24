@@ -132,6 +132,135 @@ Reglas nutricionales:
 };
 
 /**
+ * Corrige un análisis previo de comida usando IA con feedback del usuario
+ * @param originalResult - Resultado original del análisis
+ * @param correction - Descripción del usuario sobre qué corregir
+ * @param base64Image - Imagen original en base64 (opcional, si viene de foto)
+ * @param retryCount - Número de reintentos (interno)
+ * @returns Promesa con el análisis nutricional corregido
+ */
+export const correctFoodAnalysis = async (
+    originalResult: FoodAnalysisResult,
+    correction: string,
+    base64Image?: string,
+    retryCount = 0
+): Promise<FoodAnalysisResult> => {
+    if (!genAI) {
+        throw new Error("No se ha configurado la API Key de Gemini. Por favor, añade VITE_GEMINI_API_KEY a tu archivo .env");
+    }
+
+    const MAX_RETRIES = 2;
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    const prompt = `
+Eres un experto nutricionista corrigiendo un análisis nutricional previo basado en feedback del usuario.
+
+ANÁLISIS ORIGINAL:
+{
+  "name": "${originalResult.name}",
+  "calories": ${originalResult.calories},
+  "portion": "${originalResult.portion}",
+  "confidence": ${originalResult.confidence},
+  "macros": {
+    "protein": ${originalResult.macros.protein},
+    "carbs": ${originalResult.macros.carbs},
+    "fats": ${originalResult.macros.fats}
+  }
+}
+
+CORRECCIÓN DEL USUARIO: "${correction}"
+
+Tu tarea:
+- Re-analizá los datos considerando la corrección del usuario
+- Mantené la estructura original pero ajustá los valores según la corrección
+- Si el usuario menciona ingredientes diferentes, ajustá calorías y macros
+- Si el usuario menciona porción diferente, recalculá todo proporcionalmente
+- Responde ÚNICAMENTE con JSON válido, sin texto adicional ni markdown
+
+El JSON debe tener EXACTAMENTE esta estructura:
+
+{
+  "name": "Nombre corregido del plato en español",
+  "calories": 750,
+  "portion": "Porción corregida (aprox 350g)",
+  "confidence": 85,
+  "macros": {
+    "protein": 30,
+    "carbs": 50,
+    "fats": 25
+  },
+  "ingredients": [
+    { "name": "Ingrediente 1", "calories": 180 },
+    { "name": "Ingrediente 2", "calories": 250 }
+  ]
+}
+
+Reglas:
+- 1g proteína = 4 kcal, 1g carbs = 4 kcal, 1g grasa = 9 kcal
+- Los macros deben ser coherentes con las calorías totales (±15%)
+- Subí el confidence si la corrección clarifica ambigüedades
+`;
+
+    try {
+        let contentParts: any[] = [prompt];
+
+        // Si hay imagen, incluirla para contexto adicional
+        if (base64Image) {
+            const base64Data = base64Image.split(',')[1] || base64Image;
+            contentParts.push({
+                inlineData: {
+                    data: base64Data,
+                    mimeType: "image/jpeg"
+                }
+            });
+        }
+
+        const result = await model.generateContent(contentParts);
+        const response = await result.response;
+        let text = response.text();
+
+        // Limpiar formato markdown
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        const parsedData: FoodAnalysisResult = JSON.parse(text);
+
+        // Validación estricta de campos requeridos
+        if (
+            typeof parsedData.calories !== "number" ||
+            typeof parsedData.name !== "string" ||
+            !parsedData.macros ||
+            typeof parsedData.macros.protein !== "number" ||
+            typeof parsedData.macros.carbs !== "number" ||
+            typeof parsedData.macros.fats !== "number"
+        ) {
+            console.error("Respuesta inválida de Gemini:", text);
+            throw new Error("La IA devolvió un formato inválido. Intentá de nuevo.");
+        }
+
+        return parsedData;
+
+    } catch (error: any) {
+        // Reintentar en caso de error de red o timeout
+        if (retryCount < MAX_RETRIES && (error.message?.includes('timeout') || error.message?.includes('network'))) {
+            console.log(`Reintentando corrección (intento ${retryCount + 1}/${MAX_RETRIES})...`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+            return correctFoodAnalysis(originalResult, correction, base64Image, retryCount + 1);
+        }
+
+        console.error("Error correcting food analysis:", error);
+
+        if (error.message?.includes('API key')) {
+            throw new Error("Error de configuración de API. Contactá al administrador.");
+        }
+        if (error.message?.includes('quota') || error.message?.includes('rate limit')) {
+            throw new Error("Se alcanzó el límite de uso. Intentá en unos minutos.");
+        }
+
+        throw error;
+    }
+};
+
+/**
  * Analiza una imagen de comida usando Gemini AI
  * @param base64Image - Imagen en formato base64 (con o sin prefijo data:image)
  * @param retryCount - Número de reintentos (interno)

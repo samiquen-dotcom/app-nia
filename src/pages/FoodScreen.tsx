@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useMemo } from 'react';
 import Webcam from "react-webcam";
 import { useFeatureData } from '../hooks/useFeatureData';
 import type { FoodData, FoodItem } from '../types';
-import { analyzeFoodImage, analyzeFoodText } from '../services/geminiService';
+import { analyzeFoodImage, analyzeFoodText, correctFoodAnalysis } from '../services/geminiService';
 import type { FoodAnalysisResult } from '../services/geminiService';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -47,6 +47,7 @@ export const FoodScreen: React.FC = () => {
     // Estado para cámara
     const [showCamera, setShowCamera] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
     const [lastImageBase64, setLastImageBase64] = useState<string | null>(null);
 
@@ -58,6 +59,11 @@ export const FoodScreen: React.FC = () => {
 
     // Estado para el Modal del Smart Scanner
     const [scannedResult, setScannedResult] = useState<FoodAnalysisResult | null>(null);
+
+    // Estado para corrección con IA
+    const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+    const [correctionText, setCorrectionText] = useState('');
+    const [isCorrecting, setIsCorrecting] = useState(false);
 
     // Estado para editar item
     const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
@@ -132,6 +138,7 @@ export const FoodScreen: React.FC = () => {
     // ─── Procesamiento de imagen con IA ────────────────────────────────────────
     const processImageBase64 = async (base64data: string) => {
         setIsAnalyzing(true);
+        setIsSaving(true);
         setScannedResult(null);
         setAnalysisError(null);
         setLastImageBase64(base64data);
@@ -143,6 +150,7 @@ export const FoodScreen: React.FC = () => {
             setAnalysisError(error.message || 'Error analizando la imagen');
         } finally {
             setIsAnalyzing(false);
+            setIsSaving(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
@@ -173,6 +181,7 @@ export const FoodScreen: React.FC = () => {
         if (!foodDescription.trim()) return;
 
         setIsAnalyzing(true);
+        setIsSaving(true);
         setScannedResult(null);
         setAnalysisError(null);
 
@@ -183,6 +192,7 @@ export const FoodScreen: React.FC = () => {
             setAnalysisError(error.message || 'Error analizando el texto');
         } finally {
             setIsAnalyzing(false);
+            setIsSaving(false);
         }
     };
 
@@ -210,6 +220,33 @@ export const FoodScreen: React.FC = () => {
         setScannedResult(null);
         setFoodDescription('');
         setShowRegisterModal(false);
+    };
+
+    // ─── Corrección con IA ───────────────────────────────────────────────────
+    const handleCorrection = async () => {
+        if (!correctionText.trim() || !scannedResult) return;
+
+        setIsCorrecting(true);
+        try {
+            const correctedResult = await correctFoodAnalysis(
+                scannedResult,
+                correctionText,
+                lastImageBase64 || undefined
+            );
+            setScannedResult(correctedResult);
+            setShowCorrectionModal(false);
+            setCorrectionText('');
+        } catch (error: any) {
+            setAnalysisError(error.message || 'Error corrigiendo el análisis');
+            setShowCorrectionModal(false);
+        } finally {
+            setIsCorrecting(false);
+        }
+    };
+
+    const openCorrectionModal = () => {
+        setCorrectionText('');
+        setShowCorrectionModal(true);
     };
 
     // ─── Cálculos de totales ───────────────────────────────────────────────────
@@ -803,6 +840,27 @@ export const FoodScreen: React.FC = () => {
                 </div>
             )}
 
+            {/* ── Modal de Carga "Analizando..." ─────────────────────────────── */}
+            {isSaving && (
+                <div className="fixed inset-0 z-[110] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-[#1a0d10] w-full max-w-sm rounded-3xl p-8 shadow-2xl text-center">
+                        <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <span className="material-symbols-outlined text-emerald-500 text-4xl animate-spin">progress_activity</span>
+                        </div>
+                        <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2">
+                            Analizando tu comida...
+                        </h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
+                            La IA está calculando calorías y nutrientes
+                        </p>
+                        <div className="flex items-center justify-center gap-2 text-emerald-500">
+                            <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                            <span className="text-xs font-bold">Procesando con Gemini AI</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ── Modal de Resultados del Escaneo/Texto ─────────────────────── */}
             {scannedResult && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
@@ -874,18 +932,96 @@ export const FoodScreen: React.FC = () => {
                         </div>
 
                         {/* Footer con acciones */}
-                        <div className="p-4 bg-slate-50 dark:bg-[#2d1820]/30 border-t border-slate-100 dark:border-[#5a2b35]/20 flex gap-3">
+                        <div className="p-4 bg-slate-50 dark:bg-[#2d1820]/30 border-t border-slate-100 dark:border-[#5a2b35]/20">
+                            {/* Botón Corregir con IA */}
                             <button
-                                onClick={() => { setScannedResult(null); setFoodDescription(''); setRegisterMethod(null); }}
-                                className="flex-1 py-3 px-4 rounded-xl font-bold text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-[#5a2b35]/30 transition-colors"
+                                onClick={openCorrectionModal}
+                                className="w-full mb-3 py-2.5 px-4 rounded-xl font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors flex items-center justify-center gap-2"
                             >
-                                Descartar
+                                <span className="material-symbols-outlined text-sm">edit_note</span>
+                                Corregir con IA
+                            </button>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => { setScannedResult(null); setFoodDescription(''); setRegisterMethod(null); }}
+                                    className="flex-1 py-3 px-4 rounded-xl font-bold text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-[#5a2b35]/30 transition-colors"
+                                >
+                                    Descartar
+                                </button>
+                                <button
+                                    onClick={saveScannedFood}
+                                    className="flex-[2] py-3 px-4 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/20 transition-all active:scale-95"
+                                >
+                                    Guardar Comida
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Modal de Corrección con IA ─────────────────────────────────── */}
+            {showCorrectionModal && (
+                <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-[#1a0d10] w-full max-w-md rounded-3xl p-6 shadow-2xl">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center">
+                                <span className="material-symbols-outlined text-indigo-500 text-xl">edit_note</span>
+                            </div>
+                            <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">
+                                Corregir con IA
+                            </h3>
+                        </div>
+
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                            Contale a la IA qué necesita corregir. Por ejemplo:
+                        </p>
+
+                        <div className="bg-slate-50 dark:bg-[#2d1820]/50 rounded-xl p-3 mb-4">
+                            <ul className="text-xs text-slate-600 dark:text-slate-300 space-y-1">
+                                <li>• "Es pan integral, no blanco"</li>
+                                <li>• "La porción es más pequeña, es para una persona"</li>
+                                <li>• "No tiene queso, es sin lácteos"</li>
+                                <li>• "Es pollo a la plancha, no frito"</li>
+                            </ul>
+                        </div>
+
+                        <textarea
+                            className="w-full bg-slate-50 dark:bg-[#2d1820] border border-slate-200 dark:border-[#5a2b35]/40 rounded-2xl p-4 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-400 transition-colors resize-none"
+                            rows={4}
+                            placeholder="Ej: El arroz es integral, no blanco. Y la porción de pollo es más pequeña..."
+                            value={correctionText}
+                            onChange={(e) => setCorrectionText(e.target.value)}
+                        />
+
+                        <div className="flex gap-3 mt-4">
+                            <button
+                                onClick={() => { setShowCorrectionModal(false); setCorrectionText(''); }}
+                                className="flex-1 py-3 px-4 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#2d1820] transition-colors"
+                            >
+                                Cancelar
                             </button>
                             <button
-                                onClick={saveScannedFood}
-                                className="flex-[2] py-3 px-4 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/20 transition-all active:scale-95"
+                                onClick={handleCorrection}
+                                disabled={!correctionText.trim() || isCorrecting}
+                                className={`flex-1 py-3 px-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2 ${
+                                    !correctionText.trim() || isCorrecting
+                                        ? 'bg-slate-300 dark:bg-[#3a2028] cursor-not-allowed'
+                                        : 'bg-indigo-500 hover:bg-indigo-600'
+                                }`}
                             >
-                                Guardar Comida
+                                {isCorrecting ? (
+                                    <>
+                                        <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                                        Corrigiendo...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                                        Corregir
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
