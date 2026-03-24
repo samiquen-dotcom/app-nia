@@ -1,22 +1,16 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-
-const mainNavs = [
-    { path: '/home', icon: 'home', label: 'Home' },
-    { path: '/finance', icon: 'account_balance_wallet', label: 'Finanzas' },
-    { path: '/period', icon: 'female', label: 'Ciclo' },
-];
-
-const moreNavs = [
-    { path: '/gym', icon: 'fitness_center', label: 'Gym' },
-    { path: '/food', icon: 'nutrition', label: 'Comidas' },
-    { path: '/wellness', icon: 'self_improvement', label: 'Bienestar' },
-    { path: '/goals', icon: 'stars', label: 'Metas' },
-];
+import { useUserPreferences } from '../context/UserPreferencesContext';
 
 export const BottomNav: React.FC = () => {
     const location = useLocation();
+    const { preferences } = useUserPreferences();
     const [showMore, setShowMore] = React.useState(false);
+
+    // Obtener items habilitados ordenados por el usuario
+    const enabledNavItems = preferences?.navItems.filter(item => item.enabled) || [];
+    const mainNavs = enabledNavItems.slice(0, 3); // Primeros 3 en el dock
+    const moreNavs = enabledNavItems.slice(3); // Resto en el menú "más"
 
     // Don't show nav on login screen
     if (location.pathname === '/') return null;
@@ -62,12 +56,23 @@ export const BottomNav: React.FC = () => {
                     </NavLink>
                 ))}
 
+                {/* Profile Button */}
+                <NavLink
+                    to="/profile"
+                    className={({ isActive }) => `
+                        flex flex-col items-center justify-center w-14 h-14 transition-all duration-300 rounded-full
+                        ${isActive ? 'text-primary bg-secondary/30 scale-110 shadow-sm' : 'text-slate-400 hover:text-primary hover:bg-slate-50 dark:hover:bg-[#3a2028]'}
+                    `}
+                >
+                    <span className="material-symbols-outlined text-2xl">person</span>
+                </NavLink>
+
                 {/* More Button */}
                 <button
                     onClick={() => setShowMore(!showMore)}
                     className={`
                         flex flex-col items-center justify-center w-14 h-14 transition-all duration-300 rounded-full
-                        ${showMore || moreNavs.some(n => n.path === location.pathname) ? 'text-primary bg-secondary/30 scale-110 shadow-sm' : 'text-slate-400 hover:text-primary hover:bg-slate-50 dark:hover:bg-[#3a2028]'}
+                        ${showMore || moreNavs.some(n => n.path === location.pathname) ? 'text-primary bg-secondary/30 scale-110 shadow-sm' : 'text-slate-400 hover:text-primary hover:bg-slate-50 dark:hover:bg-[#3a2b35]'}
                     `}
                 >
                     <span className="material-symbols-outlined text-2xl">grid_view</span>

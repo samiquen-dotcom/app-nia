@@ -10,8 +10,10 @@ import { FoodScreen } from './pages/FoodScreen';
 import { WellnessScreen } from './pages/WellnessScreen';
 import { GoalsScreen } from './pages/GoalsScreen';
 import { DebtsScreen } from './pages/DebtsScreen';
+import { ProfileScreen } from './pages/ProfileScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { UserPreferencesProvider } from './context/UserPreferencesContext';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -24,28 +26,31 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<LoginScreen />} />
-            <Route element={<Layout />}>
-              <Route path="/home" element={<ProtectedRoute><HomeScreen /></ProtectedRoute>} />
-              <Route path="/finance" element={<ProtectedRoute><FinanceScreen /></ProtectedRoute>} />
-              <Route path="/period" element={<ProtectedRoute><PeriodScreen /></ProtectedRoute>} />
-              <Route path="/gym" element={<ProtectedRoute><GymScreen /></ProtectedRoute>} />
-              <Route path="/food" element={<ProtectedRoute><FoodScreen /></ProtectedRoute>} />
-              <Route path="/wellness" element={<ProtectedRoute><WellnessScreen /></ProtectedRoute>} />
-              <Route path="/goals" element={<ProtectedRoute><GoalsScreen /></ProtectedRoute>} />
-              <Route path="/debts" element={<ProtectedRoute><DebtsScreen /></ProtectedRoute>} />
-            </Route>
-            <Route path="*" element={
-              <div className="flex flex-col items-center justify-center min-h-screen text-center bg-slate-50 dark:bg-[#1a0d10] dark:text-slate-200">
-                <h1 className="text-6xl mb-4">😿</h1>
-                <h2 className="text-xl font-bold">Página no encontrada</h2>
-                <a href="/home" className="text-pink-500 font-bold mt-4 underline">Volver al inicio</a>
-              </div>
-            } />
-          </Routes>
-        </BrowserRouter>
+        <UserPreferencesProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<LoginScreen />} />
+              <Route element={<Layout />}>
+                <Route path="/home" element={<ProtectedRoute><HomeScreen /></ProtectedRoute>} />
+                <Route path="/finance" element={<ProtectedRoute><FinanceScreen /></ProtectedRoute>} />
+                <Route path="/period" element={<ProtectedRoute><PeriodScreen /></ProtectedRoute>} />
+                <Route path="/gym" element={<ProtectedRoute><GymScreen /></ProtectedRoute>} />
+                <Route path="/food" element={<ProtectedRoute><FoodScreen /></ProtectedRoute>} />
+                <Route path="/wellness" element={<ProtectedRoute><WellnessScreen /></ProtectedRoute>} />
+                <Route path="/goals" element={<ProtectedRoute><GoalsScreen /></ProtectedRoute>} />
+                <Route path="/debts" element={<ProtectedRoute><DebtsScreen /></ProtectedRoute>} />
+                <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+              </Route>
+              <Route path="*" element={
+                <div className="flex flex-col items-center justify-center min-h-screen text-center bg-slate-50 dark:bg-[#1a0d10] dark:text-slate-200">
+                  <h1 className="text-6xl mb-4">😿</h1>
+                  <h2 className="text-xl font-bold">Página no encontrada</h2>
+                  <a href="/home" className="text-pink-500 font-bold mt-4 underline">Volver al inicio</a>
+                </div>
+              } />
+            </Routes>
+          </BrowserRouter>
+        </UserPreferencesProvider>
       </AuthProvider>
     </ThemeProvider>
   );

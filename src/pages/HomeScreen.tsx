@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signOut } from 'firebase/auth';
 import { CycleWidget } from '../components/CycleWidget';
 import { CycleDayModal } from '../components/CycleDayModal';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService, Features } from '../services/firestore';
-import { auth } from '../firebase';
 import { getPredictions, calculatePhase, getPredictiveAlert } from '../utils/cycleLogic';
-import { useTheme } from '../context/ThemeContext';
 import type { FinanceData, GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt } from '../types';
 
 const todayStr = () => {
@@ -44,7 +41,6 @@ const AFFIRMATIONS = [
 
 export const HomeScreen: React.FC = () => {
     const navigate = useNavigate();
-    const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [refresh, setRefresh] = useState(0);
     const [wizardPostponed, setWizardPostponed] = useState(false);
 
@@ -55,7 +51,6 @@ export const HomeScreen: React.FC = () => {
         calories: 0, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0,
     });
     const { user } = useAuth();
-    const { isDark, toggleTheme } = useTheme();
     const displayName = user?.displayName ? user.displayName.split(' ')[0] : 'Nia';
     const photoURL = user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayName}&backgroundColor=ffd6e0`;
 
@@ -236,46 +231,14 @@ export const HomeScreen: React.FC = () => {
                         <h2 className="text-accent text-sm font-extrabold tracking-wide uppercase capitalize">{dateString}</h2>
                     </div>
 
-                    {/* Profile Menu */}
+                    {/* Profile Menu - Navigate to Profile Screen */}
                     <div className="relative z-50">
                         <div
-                            onClick={() => setShowProfileMenu(!showProfileMenu)}
+                            onClick={() => navigate('/profile')}
                             className="h-11 w-11 rounded-full shadow-sm overflow-hidden border-2 border-primary cursor-pointer active:scale-95 transition-transform"
                         >
                             <img alt="Profile" className="h-full w-full object-cover" src={photoURL} referrerPolicy="no-referrer" />
                         </div>
-
-                        {/* Dropdown */}
-                        {showProfileMenu && (
-                            <>
-                                <div
-                                    className="fixed inset-0 z-40"
-                                    onClick={() => setShowProfileMenu(false)}
-                                ></div>
-                                <div className="absolute right-0 top-12 bg-white dark:bg-[#3a2028] shadow-xl rounded-2xl p-2 z-50 min-w-[160px] border border-pink-100 dark:border-[#5a2b35] animate-in fade-in zoom-in-95 duration-200">
-                                    <div className="px-3 py-2 border-b border-pink-50 dark:border-white/10 mb-1">
-                                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{displayName}</p>
-                                        <p className="text-[10px] text-slate-400">Premium Member ✨</p>
-                                    </div>
-                                    <button
-                                        onClick={toggleTheme}
-                                        className="w-full text-left px-3 py-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl flex items-center gap-2 transition-colors mb-1"
-                                    >
-                                        <span className={`material-symbols-outlined text-lg ${isDark ? 'text-yellow-300' : 'text-slate-400'}`}>
-                                            {isDark ? 'light_mode' : 'dark_mode'}
-                                        </span>
-                                        {isDark ? 'Modo Claro' : 'Modo Oscuro'}
-                                    </button>
-                                    <button
-                                        onClick={() => signOut(auth)}
-                                        className="w-full text-left px-3 py-2.5 text-sm text-rose-500 font-bold hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl flex items-center gap-2 transition-colors"
-                                    >
-                                        <span className="material-symbols-outlined text-lg">logout</span>
-                                        Cerrar Sesión
-                                    </button>
-                                </div>
-                            </>
-                        )}
                     </div>
                 </div>
                 <h1 className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">Hola {displayName} ✨</h1>
