@@ -11,7 +11,6 @@ const todayStr = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
-const todayDate = () => new Date().toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
 
 interface DashboardData {
     calories: number;
@@ -67,7 +66,6 @@ export const HomeScreen: React.FC = () => {
     useEffect(() => {
         if (!user) return;
         const today = todayStr();
-        const todayDateStr = todayDate();
 
         Promise.all([
             FirestoreService.getFeatureData(user.uid, Features.FINANCE),
