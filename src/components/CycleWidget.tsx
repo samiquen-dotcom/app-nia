@@ -73,7 +73,7 @@ export const CycleWidget: React.FC = () => {
 
             if (current > now) break; // Don't check future days
 
-            const dStr = current.toISOString().split('T')[0];
+            const dStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
             if (!data.dailyEntries?.[dStr]) {
                 targetLogDate = dStr;
                 isDayMissing = true;

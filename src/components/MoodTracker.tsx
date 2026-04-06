@@ -10,7 +10,10 @@ const moods = [
     { emoji: '🔥', label: 'Hype', color: 'bg-orange-100 text-orange-500' },
 ];
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
 
 export const MoodTracker: React.FC = () => {
     const { data, save } = useFeatureData<MoodData>('mood', {

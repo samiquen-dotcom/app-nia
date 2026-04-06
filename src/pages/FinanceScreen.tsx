@@ -40,7 +40,10 @@ const INCOME_CATS: CustomCategory[] = [
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
 
 const fmt = (n: number) => {
     const abs = Math.abs(n);
@@ -559,21 +562,19 @@ export const FinanceScreen: React.FC = () => {
                         <div className="flex bg-slate-100 dark:bg-[#1a0d10] rounded-full p-1">
                             <button
                                 onClick={() => setShowIncomeStats(false)}
-                                className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${
-                                    !showIncomeStats
+                                className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${!showIncomeStats
                                         ? 'bg-rose-400 text-white shadow-sm'
                                         : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                                }`}
+                                    }`}
                             >
                                 Gastos
                             </button>
                             <button
                                 onClick={() => setShowIncomeStats(true)}
-                                className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${
-                                    showIncomeStats
+                                className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${showIncomeStats
                                         ? 'bg-emerald-400 text-white shadow-sm'
                                         : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                                }`}
+                                    }`}
                             >
                                 Ingresos
                             </button>
@@ -722,13 +723,12 @@ export const FinanceScreen: React.FC = () => {
                                     className="bg-white dark:bg-[#2d1820] rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm border border-slate-50 dark:border-[#5a2b35]/20 group hover:shadow-md transition-all"
                                 >
                                     {/* Icon bubble */}
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-xl ${
-                                        isTransfer
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-xl ${isTransfer
                                             ? 'bg-blue-50 dark:bg-blue-900/20'
                                             : t.type === 'expense'
                                                 ? 'bg-rose-50 dark:bg-rose-900/20'
                                                 : 'bg-emerald-50 dark:bg-emerald-900/20'
-                                    }`}>
+                                        }`}>
                                         {isTransfer ? '💸' : (t.emoji || (t.type === 'expense' ? '💸' : '💰'))}
                                     </div>
 
@@ -764,13 +764,12 @@ export const FinanceScreen: React.FC = () => {
 
                                     {/* Amount + delete */}
                                     <div className="flex items-center gap-2 flex-shrink-0">
-                                        <span className={`font-extrabold text-sm ${
-                                            isTransfer
+                                        <span className={`font-extrabold text-sm ${isTransfer
                                                 ? 'text-blue-500'
                                                 : t.type === 'expense'
                                                     ? 'text-rose-500'
                                                     : 'text-emerald-500'
-                                        }`}>
+                                            }`}>
                                             {isTransfer ? '' : (t.type === 'expense' ? '-' : '+')}{fmt(t.amount)}
                                         </span>
                                         <button
@@ -998,13 +997,12 @@ export const FinanceScreen: React.FC = () => {
                                                 key={acc.id}
                                                 onClick={() => setTrFromAccount(acc.id)}
                                                 disabled={trToAccount === acc.id}
-                                                className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all ${
-                                                    selected
+                                                className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all ${selected
                                                         ? `border-blue-400 bg-blue-50 dark:bg-blue-900/30 scale-105`
                                                         : trToAccount === acc.id
                                                             ? 'border-slate-100 dark:border-[#5a2b35]/30 bg-slate-100 dark:bg-[#2d1820] opacity-50 cursor-not-allowed'
                                                             : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'
-                                                }`}
+                                                    }`}
                                             >
                                                 <span className="text-xl">{acc.id.startsWith('custom_') ? newAccountEmoji : meta.emoji}</span>
                                                 <span className={`text-[10px] w-full min-w-0 truncate font-bold text-center ${selected ? 'text-blue-600 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
@@ -1031,13 +1029,12 @@ export const FinanceScreen: React.FC = () => {
                                                 key={acc.id}
                                                 onClick={() => setTrToAccount(acc.id)}
                                                 disabled={trFromAccount === acc.id}
-                                                className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all ${
-                                                    selected
+                                                className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all ${selected
                                                         ? `border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 scale-105`
                                                         : trFromAccount === acc.id
                                                             ? 'border-slate-100 dark:border-[#5a2b35]/30 bg-slate-100 dark:bg-[#2d1820] opacity-50 cursor-not-allowed'
                                                             : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'
-                                                }`}
+                                                    }`}
                                             >
                                                 <span className="text-xl">{isCustom ? newAccountEmoji : meta.emoji}</span>
                                                 <span className={`text-[10px] w-full min-w-0 truncate font-bold text-center ${selected ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
@@ -1173,11 +1170,10 @@ export const FinanceScreen: React.FC = () => {
                                         <button
                                             key={emoji}
                                             onClick={() => setNewAccountEmoji(emoji)}
-                                            className={`w-10 h-10 rounded-lg text-xl flex items-center justify-center transition-all ${
-                                                newAccountEmoji === emoji
+                                            className={`w-10 h-10 rounded-lg text-xl flex items-center justify-center transition-all ${newAccountEmoji === emoji
                                                     ? 'bg-emerald-100 dark:bg-emerald-900/30 border-2 border-emerald-500 scale-110'
                                                     : 'bg-slate-100 dark:bg-[#3a2028] border-2 border-transparent hover:scale-105'
-                                            }`}
+                                                }`}
                                         >
                                             {emoji}
                                         </button>

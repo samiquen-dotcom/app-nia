@@ -4,7 +4,10 @@ import type { WellnessData, MoodData, CustomMood } from '../types';
 
 const HABITS = ['Leer 10 páginas', 'Skincare', 'Meditar', 'Agradecer'];
 const WATER_GOAL = 8;
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
 
 const sendNotif = (body: string) => {
     if (Notification.permission === 'granted') {

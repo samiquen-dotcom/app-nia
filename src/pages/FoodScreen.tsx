@@ -5,8 +5,13 @@ import type { FoodData, FoodItem } from '../types';
 import { analyzeFoodImage, analyzeFoodText, correctFoodAnalysis } from '../services/geminiService';
 import type { FoodAnalysisResult } from '../services/geminiService';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
-const formatDate = (date: Date) => date.toISOString().split('T')[0];
+const todayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+const formatDate = (date: Date) => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
 
 // Helper para obtener nombre legible de fecha
 const getFriendlyDateName = (dateStr: string): string => {
@@ -415,11 +420,10 @@ export const FoodScreen: React.FC = () => {
                 <button
                     onClick={goToNextDay}
                     disabled={selectedDate === todayStr()}
-                    className={`p-2 rounded-xl transition-colors ${
-                        selectedDate === todayStr()
+                    className={`p-2 rounded-xl transition-colors ${selectedDate === todayStr()
                             ? 'opacity-30 cursor-not-allowed'
                             : 'hover:bg-slate-100 dark:hover:bg-[#2d1820]'
-                    }`}
+                        }`}
                     aria-label="Día siguiente"
                 >
                     <span className="material-symbols-outlined text-slate-600 dark:text-slate-300">chevron_right</span>
@@ -492,9 +496,8 @@ export const FoodScreen: React.FC = () => {
                             >
                                 <div className="relative w-full flex justify-center">
                                     <div
-                                        className={`w-full max-w-[24px] rounded-t-lg transition-all ${
-                                            isToday ? 'bg-emerald-400' : day.calories > CALORIE_GOAL ? 'bg-rose-400' : 'bg-indigo-400'
-                                        }`}
+                                        className={`w-full max-w-[24px] rounded-t-lg transition-all ${isToday ? 'bg-emerald-400' : day.calories > CALORIE_GOAL ? 'bg-rose-400' : 'bg-indigo-400'
+                                            }`}
                                         style={{ height: `${Math.max(height, 8)}px`, minHeight: '8px' }}
                                     />
                                 </div>
@@ -517,11 +520,10 @@ export const FoodScreen: React.FC = () => {
                     {todayItems.map(item => (
                         <div
                             key={item.id}
-                            className={`bg-white dark:bg-[#2d1820] rounded-2xl shadow-sm border transition-all overflow-hidden ${
-                                expandedItemId === item.id
+                            className={`bg-white dark:bg-[#2d1820] rounded-2xl shadow-sm border transition-all overflow-hidden ${expandedItemId === item.id
                                     ? 'border-emerald-400 dark:border-emerald-500/50'
                                     : 'border-slate-100 dark:border-[#5a2b35]/30'
-                            }`}
+                                }`}
                         >
                             {/* Item principal (colapsado) */}
                             <button
@@ -529,9 +531,8 @@ export const FoodScreen: React.FC = () => {
                                 className="w-full flex justify-between items-center p-4 text-left"
                             >
                                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                                        item.macros ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500' : 'bg-slate-100 dark:bg-[#3a2028] text-slate-400'
-                                    }`}>
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${item.macros ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500' : 'bg-slate-100 dark:bg-[#3a2028] text-slate-400'
+                                        }`}>
                                         <span className="material-symbols-outlined text-lg">
                                             {item.macros ? 'restaurant' : 'restaurant_menu'}
                                         </span>
@@ -550,9 +551,8 @@ export const FoodScreen: React.FC = () => {
                                         {item.calories}
                                     </span>
                                     <span className="text-xs text-slate-400 font-bold">kcal</span>
-                                    <span className={`material-symbols-outlined text-slate-300 transition-transform ${
-                                        expandedItemId === item.id ? 'rotate-180' : ''
-                                    }`}>
+                                    <span className={`material-symbols-outlined text-slate-300 transition-transform ${expandedItemId === item.id ? 'rotate-180' : ''
+                                        }`}>
                                         expand_more
                                     </span>
                                 </div>
@@ -597,9 +597,8 @@ export const FoodScreen: React.FC = () => {
                                     {/* Confianza IA */}
                                     {item.confidence !== undefined && (
                                         <div className="flex items-center gap-2 mb-4">
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
-                                                item.confidence >= 80 ? 'bg-emerald-400' : item.confidence >= 50 ? 'bg-orange-400' : 'bg-rose-400'
-                                            }`}>
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${item.confidence >= 80 ? 'bg-emerald-400' : item.confidence >= 50 ? 'bg-orange-400' : 'bg-rose-400'
+                                                }`}>
                                                 {item.confidence}%
                                             </div>
                                             <span className="text-xs text-slate-400">Confianza del análisis</span>
@@ -726,11 +725,10 @@ export const FoodScreen: React.FC = () => {
                             <button
                                 onClick={handleTextAnalysis}
                                 disabled={!foodDescription.trim() || isAnalyzing}
-                                className={`flex-1 py-3 px-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2 ${
-                                    !foodDescription.trim() || isAnalyzing
+                                className={`flex-1 py-3 px-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2 ${!foodDescription.trim() || isAnalyzing
                                         ? 'bg-slate-300 dark:bg-[#3a2028] cursor-not-allowed'
                                         : 'bg-emerald-500 hover:bg-emerald-600'
-                                }`}
+                                    }`}
                             >
                                 {isAnalyzing ? (
                                     <>
@@ -883,9 +881,8 @@ export const FoodScreen: React.FC = () => {
                         <div className="p-6 overflow-y-auto">
                             {/* Confianza */}
                             <div className="flex items-center gap-3 mb-6 bg-slate-50 dark:bg-[#2d1820]/50 p-3 rounded-2xl border border-slate-100 dark:border-[#5a2b35]/20">
-                                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-xs text-white flex-shrink-0 ${
-                                    scannedResult.confidence >= 80 ? 'bg-emerald-400' : scannedResult.confidence >= 50 ? 'bg-orange-400' : 'bg-rose-400'
-                                }`}>
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-xs text-white flex-shrink-0 ${scannedResult.confidence >= 80 ? 'bg-emerald-400' : scannedResult.confidence >= 50 ? 'bg-orange-400' : 'bg-rose-400'
+                                    }`}>
                                     {scannedResult.confidence}%
                                 </div>
                                 <div className="min-w-0">
@@ -1005,11 +1002,10 @@ export const FoodScreen: React.FC = () => {
                             <button
                                 onClick={handleCorrection}
                                 disabled={!correctionText.trim() || isCorrecting}
-                                className={`flex-1 py-3 px-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2 ${
-                                    !correctionText.trim() || isCorrecting
+                                className={`flex-1 py-3 px-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2 ${!correctionText.trim() || isCorrecting
                                         ? 'bg-slate-300 dark:bg-[#3a2028] cursor-not-allowed'
                                         : 'bg-indigo-500 hover:bg-indigo-600'
-                                }`}
+                                    }`}
                             >
                                 {isCorrecting ? (
                                     <>

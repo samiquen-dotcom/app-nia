@@ -5,11 +5,11 @@ import { CycleDayModal } from '../components/CycleDayModal';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService, Features } from '../services/firestore';
 import { getPredictions, calculatePhase, getPredictiveAlert } from '../utils/cycleLogic';
-import type { FinanceData, GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt } from '../types';
+import type { FinanceData, GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt, WellnessData } from '../types';
 
 const todayStr = () => {
     const now = new Date();
-    return `${now.getFullYear()} -${String(now.getMonth() + 1).padStart(2, '0')} -${String(now.getDate()).padStart(2, '0')} `;
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
 const todayDate = () => new Date().toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
 
@@ -21,6 +21,7 @@ interface DashboardData {
     todaySpent: number;
     goalsTotal: number;
     goalsDone: number;
+    waterToday: number;
     periodStatus?: {
         isActive: boolean;
         isDayMissing: boolean;
@@ -48,7 +49,7 @@ export const HomeScreen: React.FC = () => {
         weekday: 'long', day: 'numeric', month: 'long'
     });
     const [dashboard, setDashboard] = useState<DashboardData>({
-        calories: 0, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0,
+        calories: 0, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0, waterToday: 0,
     });
     const { user } = useAuth();
     const displayName = user?.displayName ? user.displayName.split(' ')[0] : 'Nia';
@@ -74,14 +75,16 @@ export const HomeScreen: React.FC = () => {
             FirestoreService.getFeatureData(user.uid, Features.FOOD),
             FirestoreService.getFeatureData(user.uid, Features.GOALS),
             FirestoreService.getFeatureData(user.uid, Features.PERIOD),
-            FirestoreService.getFeatureData(user.uid, Features.DEBTS)
-        ]).then(([finRaw, gymRaw, foodRaw, goalsRaw, periodRaw, debtsRaw]) => {
+            FirestoreService.getFeatureData(user.uid, Features.DEBTS),
+            FirestoreService.getFeatureData(user.uid, Features.WELLNESS)
+        ]).then(([finRaw, gymRaw, foodRaw, goalsRaw, periodRaw, debtsRaw, wellnessRaw]) => {
             const fin = finRaw as FinanceData | null;
             const gym = gymRaw as GymData | null;
             const food = foodRaw as FoodData | null;
             const goals = goalsRaw as GoalsData | null;
             const period = periodRaw as PeriodData | null;
             const debtsData = debtsRaw as DebtsData | null;
+            const wellness = wellnessRaw as WellnessData | null;
 
             // Check for debts due today or overdue
             if (debtsData?.items) {
@@ -127,19 +130,23 @@ export const HomeScreen: React.FC = () => {
                 const weekDates = Array.from({ length: 7 }, (_, i) => {
                     const d = new Date(monday);
                     d.setDate(monday.getDate() + i);
-                    return d.toISOString().split('T')[0];
+                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                 });
                 gymWeeklyCompleted = weekDates.filter(date => gym.history.some(h => h.date === date)).length;
             }
 
             // Finance: today's expenses (filter by dateISO for reliability)
             const todaySpent = fin?.transactions
-                ?.filter(t => t.type === 'expense' && (t.dateISO === today || t.date === todayDateStr))
+                ?.filter(t => t.type === 'expense' && t.dateISO === today)
                 .reduce((sum, t) => sum + t.amount, 0) ?? 0;
 
             // Goals completion
             const goalsTotal = goals?.goals?.length ?? 0;
             const goalsDone = goals?.goals?.filter(g => g.completed).length ?? 0;
+
+            // Wellness: today's water intake
+            const todayWellness = wellness?.days?.find(d => d.date === today);
+            const waterToday = todayWellness?.glasses ?? 0;
 
             // Cycle Status Logic
             let periodStatus = undefined;
@@ -200,7 +207,7 @@ export const HomeScreen: React.FC = () => {
                             current.setDate(start.getDate() + i);
                             if (current > now) break;
 
-                            const dStr = current.toISOString().split('T')[0];
+                            const dStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
                             if (!period.dailyEntries?.[dStr]) {
                                 isDayMissing = true;
                                 break;
@@ -212,7 +219,7 @@ export const HomeScreen: React.FC = () => {
                 periodStatus = { isActive, isDayMissing, day, daysUntil };
             }
 
-            setDashboard({ calories, gymDone, gymGoal, gymWeeklyCompleted, todaySpent, goalsTotal, goalsDone, periodStatus, predictiveAlert, pendingReviewDate });
+            setDashboard({ calories, gymDone, gymGoal, gymWeeklyCompleted, todaySpent, goalsTotal, goalsDone, waterToday, periodStatus, predictiveAlert, pendingReviewDate });
 
         });
     }, [user, refresh]);
@@ -389,28 +396,39 @@ export const HomeScreen: React.FC = () => {
                     )}
 
                     {/* Cycle Summary Card */}
-                    {dashboard.periodStatus && dashboard.periodStatus.isActive && !dashboard.periodStatus.isDayMissing && (
+                    {dashboard.periodStatus && (
                         <div
                             onClick={() => navigate('/period')}
-                            className="bg-gradient-to-br from-pink-50 to-white dark:from-[#3a2028] dark:to-[#2d1820] p-4 rounded-3xl shadow-sm border border-pink-100 dark:border-[#5a2b35] flex flex-col justify-between hover:shadow-md transition-all cursor-pointer group"
+                            className={`p-4 rounded-3xl shadow-sm flex flex-col justify-between hover:shadow-md transition-all cursor-pointer group ${dashboard.periodStatus.isActive && dashboard.periodStatus.isDayMissing
+                                ? 'bg-gradient-to-br from-rose-50 to-white dark:from-[#3a1520] dark:to-[#2d1820] border-2 border-rose-300 dark:border-rose-700'
+                                : 'bg-gradient-to-br from-pink-50 to-white dark:from-[#3a2028] dark:to-[#2d1820] border border-pink-100 dark:border-[#5a2b35]'
+                                }`}
                         >
                             <div className="flex justify-between items-start">
-                                <div className="bg-pink-100 p-2 rounded-full text-pink-500 group-hover:scale-110 transition-transform">
-                                    <span className="material-symbols-outlined text-lg">water_drop</span>
+                                <div className={`p-2 rounded-full group-hover:scale-110 transition-transform ${dashboard.periodStatus.isDayMissing ? 'bg-rose-100 text-rose-500' : 'bg-pink-100 text-pink-500'
+                                    }`}>
+                                    <span className="material-symbols-outlined text-lg">{dashboard.periodStatus.isDayMissing ? 'warning' : 'water_drop'}</span>
                                 </div>
-                                <span className="text-xs font-bold text-pink-400 flex items-center gap-1">
-                                    Día {dashboard.periodStatus.day}
+                                <span className={`text-xs font-bold flex items-center gap-1 ${dashboard.periodStatus.isActive ? 'text-pink-400' : 'text-indigo-400'
+                                    }`}>
+                                    {dashboard.periodStatus.isActive ? `Día ${dashboard.periodStatus.day}` : `En ${dashboard.periodStatus.daysUntil}d`}
                                 </span>
                             </div>
                             <div>
                                 <p className="font-bold text-slate-700 dark:text-slate-200">Ciclo</p>
-                                <p className="text-[10px] text-slate-400 font-medium">
-                                    Todo en orden ✨
+                                <p className="text-[10px] font-medium">
+                                    {dashboard.periodStatus.isActive && dashboard.periodStatus.isDayMissing
+                                        ? '⚠️ Registrar día'
+                                        : dashboard.periodStatus.isActive
+                                            ? 'Todo en orden ✨'
+                                            : `Próximo en ${dashboard.periodStatus.daysUntil} días`}
                                 </p>
-                                <div className="w-full bg-pink-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                                <div className={`h-1.5 rounded-full mt-2 overflow-hidden ${dashboard.periodStatus.isDayMissing ? 'bg-rose-100' : 'bg-pink-100'
+                                    }`}>
                                     <div
-                                        className="bg-pink-400 h-1.5 rounded-full"
-                                        style={{ width: '100%' }}
+                                        className={`h-1.5 rounded-full transition-all ${dashboard.periodStatus.isDayMissing ? 'bg-rose-400 animate-pulse' : 'bg-pink-400'
+                                            }`}
+                                        style={{ width: dashboard.periodStatus.isActive ? '100%' : `${Math.max(0, 100 - (dashboard.periodStatus.daysUntil / 28) * 100)}%` }}
                                     ></div>
                                 </div>
                             </div>
@@ -494,6 +512,30 @@ export const HomeScreen: React.FC = () => {
                                 <p className="text-[10px] text-slate-400">
                                     {dashboard.todaySpent === 0 ? 'Sin gastos hoy' : 'Hoy'}
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Wellness / Water Card */}
+                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start">
+                            <div className="bg-sky-100 p-2 rounded-full text-sky-500">
+                                <span className="material-symbols-outlined text-lg">water_drop</span>
+                            </div>
+                            <span className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                                💧{dashboard.waterToday}
+                            </span>
+                        </div>
+                        <div>
+                            <p className="font-bold text-slate-700 dark:text-slate-200">Agua</p>
+                            <p className="text-[10px] text-sky-400 font-bold">
+                                {dashboard.waterToday === 0 ? 'Empieza hoy 💧' : dashboard.waterToday >= 8 ? '¡Meta cumplida! 🎉' : `${dashboard.waterToday}/8 vasos`}
+                            </p>
+                            <div className="w-full bg-sky-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                                <div
+                                    className="bg-sky-400 h-1.5 rounded-full transition-all"
+                                    style={{ width: `${Math.min((dashboard.waterToday / 8) * 100, 100)}%` }}
+                                ></div>
                             </div>
                         </div>
                     </div>

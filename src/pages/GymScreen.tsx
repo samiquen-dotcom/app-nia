@@ -4,7 +4,10 @@ import type { GymData, GymRoutine } from '../types';
 
 const WEEK_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
 
 const getWeekDates = (): string[] => {
     const today = new Date();
@@ -15,7 +18,7 @@ const getWeekDates = (): string[] => {
     return Array.from({ length: 7 }, (_, i) => {
         const d = new Date(monday);
         d.setDate(monday.getDate() + i);
-        return d.toISOString().split('T')[0];
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     });
 };
 
@@ -61,7 +64,8 @@ export const GymScreen: React.FC = () => {
         const d = new Date(dateStr);
         const day = d.getDay();
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-        return new Date(d.setDate(diff)).toISOString().split('T')[0];
+        const monday = new Date(d.setDate(diff));
+        return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
     };
 
     const workoutsPerWeek = filteredHistory.reduce((acc, curr) => {

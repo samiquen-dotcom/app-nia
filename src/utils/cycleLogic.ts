@@ -165,11 +165,13 @@ export const getPredictions = (startDate: string, cycleLength: number) => {
     const fertileEnd = new Date(currentCycleStart);
     fertileEnd.setDate(currentCycleStart.getDate() + ovulationDay + 1);
 
+    const toLocalDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
     return {
-        nextPeriod: nextStart.toISOString().split('T')[0],
+        nextPeriod: toLocalDate(nextStart),
         fertileWindow: {
-            start: fertileStart.toISOString().split('T')[0],
-            end: fertileEnd.toISOString().split('T')[0]
+            start: toLocalDate(fertileStart),
+            end: toLocalDate(fertileEnd)
         }
     };
 };
