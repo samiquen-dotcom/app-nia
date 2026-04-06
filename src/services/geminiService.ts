@@ -1,11 +1,58 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// ─── Configuración de múltiples APIs ─────────────────────────────────────────
+const API_KEY_1 = import.meta.env.VITE_GEMINI_API_KEY;
+const API_KEY_2 = import.meta.env.VITE_GEMINI_API_KEY_2;
 
-let genAI: GoogleGenerativeAI | null = null;
-if (API_KEY) {
-    genAI = new GoogleGenerativeAI(API_KEY);
+// Estado global para gestionar qué API está activa
+let currentApiIndex = 0; // 0 = API_KEY_1, 1 = API_KEY_2
+let apiFailureCount = 0;
+const FAILURE_THRESHOLD = 2; // Cambiar después de 2 fallos consecutivos
+
+// Crear instancias de las APIs disponibles
+const apis: GoogleGenerativeAI[] = [];
+if (API_KEY_1) apis.push(new GoogleGenerativeAI(API_KEY_1));
+if (API_KEY_2) apis.push(new GoogleGenerativeAI(API_KEY_2));
+
+// Obtener la instancia activa
+function getActiveGenAI(): GoogleGenerativeAI | null {
+    if (apis.length === 0) return null;
+    return apis[currentApiIndex] || apis[0];
 }
+
+// Cambiar a la siguiente API si está disponible
+function switchToNextApi(): boolean {
+    if (apis.length < 2) return false;
+
+    const previousIndex = currentApiIndex;
+    currentApiIndex = (currentApiIndex + 1) % apis.length;
+    apiFailureCount = 0;
+
+    console.log(`⚡ Cambiando de API ${previousIndex + 1} → API ${currentApiIndex + 1}`);
+    return true;
+}
+
+// Registrar fallo y cambiar si es necesario
+function recordFailure(): void {
+    apiFailureCount++;
+    console.warn(`❌ Fallo de API (${apiFailureCount}/${FAILURE_THRESHOLD})`);
+
+    if (apiFailureCount >= FAILURE_THRESHOLD) {
+        switchToNextApi();
+    }
+}
+
+// Registrar éxito (resetear contador de fallos)
+function recordSuccess(): void {
+    apiFailureCount = 0;
+}
+
+// Saber si hay APIs alternativas disponibles
+function hasAlternativeApi(): boolean {
+    return apis.length > 1;
+}
+
+let genAI: GoogleGenerativeAI | null = getActiveGenAI();
 
 export interface FoodAnalysisResult {
     name: string;
@@ -107,6 +154,7 @@ Reglas nutricionales:
             console.warn(`Advertencia: macros no coherentes con calorías. Calculadas: ${calculatedCalories}, Reportadas: ${parsedData.calories}`);
         }
 
+        recordSuccess(); // ✅ Registrar éxito
         return parsedData;
 
     } catch (error: any) {
@@ -117,14 +165,25 @@ Reglas nutricionales:
             return analyzeFoodText(description, retryCount + 1);
         }
 
+        // Detectar error de quota/rate limit y cambiar de API
+        if (error.message?.includes('quota') || error.message?.includes('rate limit') || error.message?.includes('429')) {
+            recordFailure();
+
+            // Si hay API alternativa, reintentar inmediatamente con la otra
+            if (hasAlternativeApi() && retryCount < MAX_RETRIES) {
+                console.log(`⚡ Límite alcanzado. Reintentando con API alternativa...`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                return analyzeFoodText(description, retryCount + 1);
+            }
+
+            throw new Error("Se alcanzó el límite de uso de ambas APIs. Intentá en unos minutos.");
+        }
+
         console.error("Error analyzing food text:", error);
 
         // Mensajes de error más amigables
         if (error.message?.includes('API key')) {
             throw new Error("Error de configuración de API. Contactá al administrador.");
-        }
-        if (error.message?.includes('quota') || error.message?.includes('rate limit')) {
-            throw new Error("Se alcanzó el límite de uso. Intentá en unos minutos.");
         }
 
         throw error;
@@ -247,13 +306,23 @@ Reglas:
             return correctFoodAnalysis(originalResult, correction, base64Image, retryCount + 1);
         }
 
+        // Detectar error de quota/rate limit y cambiar de API
+        if (error.message?.includes('quota') || error.message?.includes('rate limit') || error.message?.includes('429')) {
+            recordFailure();
+
+            if (hasAlternativeApi() && retryCount < MAX_RETRIES) {
+                console.log(`⚡ Límite alcanzado. Reintentando corrección con API alternativa...`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                return correctFoodAnalysis(originalResult, correction, base64Image, retryCount + 1);
+            }
+
+            throw new Error("Se alcanzó el límite de uso de ambas APIs. Intentá en unos minutos.");
+        }
+
         console.error("Error correcting food analysis:", error);
 
         if (error.message?.includes('API key')) {
             throw new Error("Error de configuración de API. Contactá al administrador.");
-        }
-        if (error.message?.includes('quota') || error.message?.includes('rate limit')) {
-            throw new Error("Se alcanzó el límite de uso. Intentá en unos minutos.");
         }
 
         throw error;
@@ -356,14 +425,28 @@ Reglas nutricionales:
             console.warn(`Advertencia: macros no coherentes con calorías. Calculadas: ${calculatedCalories}, Reportadas: ${parsedData.calories}`);
         }
 
+        recordSuccess(); // ✅ Registrar éxito
         return parsedData;
 
     } catch (error: any) {
         // Reintentar en caso de error de red o timeout
         if (retryCount < MAX_RETRIES && (error.message?.includes('timeout') || error.message?.includes('network'))) {
-            console.log(`Reintentando análisis (intento ${retryCount + 1}/${MAX_RETRIES})...`);
+            console.log(`Reintentando análisis de imagen (intento ${retryCount + 1}/${MAX_RETRIES})...`);
             await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
             return analyzeFoodImage(base64Image, retryCount + 1);
+        }
+
+        // Detectar error de quota/rate limit y cambiar de API
+        if (error.message?.includes('quota') || error.message?.includes('rate limit') || error.message?.includes('429')) {
+            recordFailure();
+
+            if (hasAlternativeApi() && retryCount < MAX_RETRIES) {
+                console.log(`⚡ Límite alcanzado. Reintentando análisis de imagen con API alternativa...`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                return analyzeFoodImage(base64Image, retryCount + 1);
+            }
+
+            throw new Error("Se alcanzó el límite de uso de ambas APIs. Intentá en unos minutos.");
         }
 
         console.error("Error analyzing food image:", error);
@@ -371,9 +454,6 @@ Reglas nutricionales:
         // Mensajes de error más amigables
         if (error.message?.includes('API key')) {
             throw new Error("Error de configuración de API. Contactá al administrador.");
-        }
-        if (error.message?.includes('quota') || error.message?.includes('rate limit')) {
-            throw new Error("Se alcanzó el límite de uso. Intentá en unos minutos.");
         }
 
         throw error;
