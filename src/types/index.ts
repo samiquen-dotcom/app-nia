@@ -3,6 +3,8 @@ export interface FinanceAccount {
     name: string;
     balance: number;
     initialBalance: number;
+    color?: string;
+    emoji?: string;
 }
 
 export interface CustomCategory {

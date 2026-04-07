@@ -15,6 +15,15 @@ const ACCOUNT_META: Record<string, { gradient: string; textColor: string; badge:
     bolsillo: { gradient: 'from-sky-200 to-cyan-300', textColor: 'text-sky-900', badge: 'bg-white/50 text-sky-900', emoji: '👖' },
 };
 
+const ACCOUNT_COLORS = [
+    { id: 'slate', gradient: 'from-slate-200 to-gray-300', textColor: 'text-gray-900', badge: 'bg-white/50 text-gray-900', colorCode: 'bg-slate-400' },
+    { id: 'indigo', gradient: 'from-indigo-200 to-blue-300', textColor: 'text-blue-900', badge: 'bg-white/50 text-blue-900', colorCode: 'bg-indigo-400' },
+    { id: 'fuchsia', gradient: 'from-fuchsia-200 to-pink-300', textColor: 'text-pink-900', badge: 'bg-white/50 text-pink-900', colorCode: 'bg-fuchsia-400' },
+    { id: 'emerald', gradient: 'from-emerald-200 to-teal-300', textColor: 'text-teal-900', badge: 'bg-white/50 text-teal-900', colorCode: 'bg-emerald-400' },
+    { id: 'amber', gradient: 'from-amber-100 to-yellow-300', textColor: 'text-amber-900', badge: 'bg-white/50 text-amber-900', colorCode: 'bg-amber-400' },
+    { id: 'rose', gradient: 'from-rose-200 to-red-300', textColor: 'text-rose-900', badge: 'bg-white/50 text-rose-900', colorCode: 'bg-rose-400' },
+];
+
 const DEFAULT_ACCOUNTS: FinanceAccount[] = [
     { id: 'nequi', name: 'Nequi', initialBalance: 0, balance: 0 },
     { id: 'efectivo', name: 'Efectivo', initialBalance: 0, balance: 0 },
@@ -175,7 +184,10 @@ export const FinanceScreen: React.FC = () => {
     const [newAccountName, setNewAccountName] = useState('');
     const [newAccountEmoji, setNewAccountEmoji] = useState('💳');
     const [newAccountBalance, setNewAccountBalance] = useState('');
+    const [newAccountColor, setNewAccountColor] = useState('slate');
     const [isAddingAccount, setIsAddingAccount] = useState(false);
+    const [isManagingAccounts, setIsManagingAccounts] = useState(false);
+    const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
 
     // ─── Computed ───────────────────────────────────────────────────────────────
     // Using persisted balances from data.accounts
@@ -381,28 +393,58 @@ export const FinanceScreen: React.FC = () => {
         }
     };
 
-    // ── Add Account Functions ───────────────────────────────────────────────
-    const addCustomAccount = async () => {
+    // ── Add/Edit Account Functions ───────────────────────────────────────────────
+    const openEditAccount = (acc: FinanceAccount) => {
+        setEditingAccountId(acc.id);
+        setNewAccountName(acc.name);
+        setNewAccountEmoji(acc.emoji || '💳');
+        setNewAccountBalance(''); // No se edita el balance inicial aquí
+        setNewAccountColor(acc.color || 'slate');
+        setShowAddAccount(true);
+    };
+
+    const saveCustomAccount = async () => {
         if (!newAccountName.trim() || isAddingAccount) return;
 
         setIsAddingAccount(true);
 
-        const newAccount: FinanceAccount = {
-            id: `custom_${Date.now()}`,
-            name: newAccountName.trim(),
-            initialBalance: parseFloat(newAccountBalance) || 0,
-            balance: parseFloat(newAccountBalance) || 0,
-        };
-
         try {
-            await save({ accounts: [...accounts, newAccount] });
+            if (editingAccountId) {
+                // Modificar cuenta existente
+                const updatedAccounts = accounts.map(acc => {
+                    if (acc.id === editingAccountId) {
+                        return {
+                            ...acc,
+                            name: newAccountName.trim(),
+                            emoji: newAccountEmoji,
+                            color: newAccountColor
+                        };
+                    }
+                    return acc;
+                });
+                await save({ accounts: updatedAccounts });
+                alert(`✅ Cuenta actualizada exitosamente`);
+            } else {
+                // Crear nueva
+                const newAccount: FinanceAccount = {
+                    id: `custom_${Date.now()}`,
+                    name: newAccountName.trim(),
+                    initialBalance: parseFloat(newAccountBalance) || 0,
+                    balance: parseFloat(newAccountBalance) || 0,
+                    emoji: newAccountEmoji,
+                    color: newAccountColor
+                };
+                await save({ accounts: [...accounts, newAccount] });
+                alert(`✅ Cuenta "${newAccount.name}" agregada exitosamente`);
+            }
             setShowAddAccount(false);
             setNewAccountName('');
             setNewAccountEmoji('💳');
             setNewAccountBalance('');
-            alert(`✅ Cuenta "${newAccount.name}" agregada exitosamente`);
+            setNewAccountColor('slate');
+            setEditingAccountId(null);
         } catch (error) {
-            alert('❌ Error al agregar la cuenta. Intentá de nuevo.');
+            alert('❌ Error al guardar la cuenta. Intentá de nuevo.');
             console.error(error);
         } finally {
             setIsAddingAccount(false);
@@ -419,6 +461,21 @@ export const FinanceScreen: React.FC = () => {
     const selectCat = (emoji: string, label: string) => {
         setTxCat(label); setTxCatEmoji(emoji);
     };
+
+    const getAccountMeta = (accId: string) => {
+        const acc = accounts.find(a => a.id === accId);
+        if (!acc) return null;
+        if (!accId.startsWith('custom_')) return ACCOUNT_META[accId] || { gradient: 'from-slate-200 to-gray-300', textColor: 'text-gray-900', badge: 'bg-white/50 text-gray-900', emoji: '💳' };
+        
+        const colorObj = ACCOUNT_COLORS.find(c => c.id === acc.color) || ACCOUNT_COLORS[0];
+        return {
+            gradient: colorObj.gradient,
+            textColor: colorObj.textColor,
+            badge: colorObj.badge,
+            emoji: acc.emoji || '💳'
+        };
+    };
+
     const navigate = useNavigate();
 
     // ── Render ────────────────────────────────────────────────────────────────
@@ -481,36 +538,70 @@ export const FinanceScreen: React.FC = () => {
             <div className="mb-5">
                 <div className="px-6 mb-2 flex items-center justify-between">
                     <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Mis cuentas</h3>
-                    <span className="text-[10px] text-slate-400">saldo actual</span>
-                    <button
-                        onClick={() => setShowAddAccount(true)}
-                        className="text-[10px] text-emerald-500 font-bold flex items-center gap-1 hover:text-emerald-600"
-                    >
-                        <span className="material-symbols-outlined text-xs">add_circle</span>
-                        Agregar
-                    </button>
+                    <span className="text-[10px] text-slate-400 hidden sm:inline">saldo actual</span>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => setIsManagingAccounts(!isManagingAccounts)}
+                            className={`text-[10px] font-bold flex items-center gap-1 transition-colors ${isManagingAccounts ? 'text-rose-500 hover:text-rose-600' : 'text-slate-400 hover:text-slate-500'}`}
+                        >   
+                            <span className="material-symbols-outlined text-xs">{isManagingAccounts ? 'close' : 'settings'}</span>
+                            {isManagingAccounts ? 'Listo' : 'Administrar'}
+                        </button>
+                        <button
+                            onClick={() => {
+                                setEditingAccountId(null);
+                                setNewAccountName('');
+                                setNewAccountEmoji('💳');
+                                setNewAccountBalance('');
+                                setNewAccountColor('slate');
+                                setShowAddAccount(true);
+                            }}
+                            className="text-[10px] text-emerald-500 font-bold flex items-center gap-1 hover:text-emerald-600"
+                        >
+                            <span className="material-symbols-outlined text-xs">add_circle</span>
+                            Agregar
+                        </button>
+                    </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 px-6 sm:grid-cols-3 md:grid-cols-5">
                     {accounts.map(acc => {
                         const isCustom = acc.id.startsWith('custom_');
-                        const meta = ACCOUNT_META[acc.id] || { gradient: 'from-slate-200 to-gray-300', textColor: 'text-gray-900', badge: 'bg-white/50 text-gray-900', emoji: newAccountEmoji };
+                        let meta = ACCOUNT_META[acc.id] || { gradient: 'from-slate-200 to-gray-300', textColor: 'text-gray-900', badge: 'bg-white/50 text-gray-900', emoji: '💳' };
+                        if (isCustom) {
+                            const colorObj = ACCOUNT_COLORS.find(c => c.id === acc.color) || ACCOUNT_COLORS[0];
+                            meta = {
+                                gradient: colorObj.gradient,
+                                textColor: colorObj.textColor,
+                                badge: colorObj.badge,
+                                emoji: acc.emoji || '💳'
+                            };
+                        }
 
                         return (
                             <div
                                 key={acc.id}
-                                className={`bg-gradient-to-br ${meta.gradient} rounded-2xl p-4 shadow-lg transition-all hover:scale-105 relative`}
+                                className={`bg-gradient-to-br ${meta.gradient} rounded-2xl p-4 shadow-lg transition-all hover:scale-105 relative ${isManagingAccounts && isCustom ? 'animate-pulse ring-2 ring-rose-400' : ''}`}
                             >
-                                {isCustom && (
-                                    <button
-                                        onClick={() => deleteCustomAccount(acc.id)}
-                                        className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform"
-                                        title="Eliminar cuenta"
-                                    >
-                                        <span className="material-symbols-outlined text-xs">delete</span>
-                                    </button>
+                                {isManagingAccounts && isCustom && (
+                                    <>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); deleteCustomAccount(acc.id); }}
+                                            className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform z-10"
+                                            title="Eliminar cuenta"
+                                        >
+                                            <span className="material-symbols-outlined text-xs">delete</span>
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); openEditAccount(acc); }}
+                                            className="absolute -top-2 right-6 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform z-10"
+                                            title="Editar cuenta"
+                                        >
+                                            <span className="material-symbols-outlined text-xs" style={{fontSize: '11px'}}>edit</span>
+                                        </button>
+                                    </>
                                 )}
                                 <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xl">{isCustom ? newAccountEmoji : meta.emoji}</span>
+                                    <span className="text-xl">{meta.emoji}</span>
                                 </div>
                                 <p className={`text-xs font-bold ${meta.textColor} opacity-80 mb-0.5`}>{acc.name}</p>
                                 <p className={`text-lg font-extrabold ${meta.textColor} leading-tight truncate`}>{fmt(acc.balance ?? acc.initialBalance)}</p>
@@ -713,9 +804,9 @@ export const FinanceScreen: React.FC = () => {
                     <div className="space-y-2">
                         {txList.map(t => {
                             const isTransfer = t.type === 'transfer';
-                            const fromAccMeta = t.fromAccountId ? ACCOUNT_META[t.fromAccountId] : null;
-                            const toAccMeta = t.toAccountId ? ACCOUNT_META[t.toAccountId] : null;
-                            const accMeta = t.accountId ? ACCOUNT_META[t.accountId] : null;
+                            const fromAccMeta = t.fromAccountId ? getAccountMeta(t.fromAccountId) : null;
+                            const toAccMeta = t.toAccountId ? getAccountMeta(t.toAccountId) : null;
+                            const accMeta = t.accountId ? getAccountMeta(t.accountId) : null;
 
                             return (
                                 <div
@@ -859,8 +950,7 @@ export const FinanceScreen: React.FC = () => {
                                 </label>
                                 <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
                                     {accounts.map(acc => {
-                                        const isCustom = acc.id.startsWith('custom_');
-                                        const meta = ACCOUNT_META[acc.id];
+                                        const meta = getAccountMeta(acc.id);
                                         const selected = txAccount === acc.id;
                                         return (
                                             <button
@@ -868,7 +958,7 @@ export const FinanceScreen: React.FC = () => {
                                                 onClick={() => setTxAccount(acc.id)}
                                                 className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all ${selected ? `border-violet-400 bg-violet-50 dark:bg-violet-900/30 scale-105` : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'}`}
                                             >
-                                                <span className="text-xl">{isCustom ? '💳' : meta.emoji}</span>
+                                                <span className="text-xl">{meta?.emoji || '💳'}</span>
                                                 <span className={`text-[10px] w-full min-w-0 truncate font-bold text-center ${selected ? 'text-violet-600 dark:text-violet-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
                                                 <span className="text-[9px] text-slate-400 truncate">{fmt(acc.balance ?? acc.initialBalance)}</span>
                                             </button>
@@ -989,7 +1079,7 @@ export const FinanceScreen: React.FC = () => {
                                 </label>
                                 <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
                                     {accounts.map(acc => {
-                                        const meta = ACCOUNT_META[acc.id];
+                                        const meta = getAccountMeta(acc.id);
                                         const selected = trFromAccount === acc.id;
                                         const balance = acc.balance ?? acc.initialBalance ?? 0;
                                         return (
@@ -1004,7 +1094,7 @@ export const FinanceScreen: React.FC = () => {
                                                             : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'
                                                     }`}
                                             >
-                                                <span className="text-xl">{acc.id.startsWith('custom_') ? newAccountEmoji : meta.emoji}</span>
+                                                <span className="text-xl">{meta?.emoji || '💳'}</span>
                                                 <span className={`text-[10px] w-full min-w-0 truncate font-bold text-center ${selected ? 'text-blue-600 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
                                                 <span className="text-[9px] text-slate-400 truncate">{fmt(balance)}</span>
                                             </button>
@@ -1020,8 +1110,7 @@ export const FinanceScreen: React.FC = () => {
                                 </label>
                                 <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
                                     {accounts.map(acc => {
-                                        const isCustom = acc.id.startsWith('custom_');
-                                        const meta = ACCOUNT_META[acc.id];
+                                        const meta = getAccountMeta(acc.id);
                                         const selected = trToAccount === acc.id;
                                         const balance = acc.balance ?? acc.initialBalance ?? 0;
                                         return (
@@ -1036,7 +1125,7 @@ export const FinanceScreen: React.FC = () => {
                                                             : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'
                                                     }`}
                                             >
-                                                <span className="text-xl">{isCustom ? newAccountEmoji : meta.emoji}</span>
+                                                <span className="text-xl">{meta?.emoji || '💳'}</span>
                                                 <span className={`text-[10px] w-full min-w-0 truncate font-bold text-center ${selected ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
                                                 <span className="text-[9px] text-slate-400 truncate">{fmt(balance)}</span>
                                             </button>
@@ -1127,7 +1216,7 @@ export const FinanceScreen: React.FC = () => {
             {showAddAccount && (
                 <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-6" onClick={() => setShowAddAccount(false)}>
                     <div className="bg-white dark:bg-[#2d1820] rounded-3xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <h2 className="font-extrabold text-slate-800 dark:text-slate-100 text-lg mb-4 text-center">Nueva cuenta 💳</h2>
+                        <h2 className="font-extrabold text-slate-800 dark:text-slate-100 text-lg mb-4 text-center">{editingAccountId ? 'Editar cuenta 💳' : 'Nueva cuenta 💳'}</h2>
 
                         <div className="space-y-4 mb-6">
                             <div>
@@ -1141,19 +1230,21 @@ export const FinanceScreen: React.FC = () => {
                                 />
                             </div>
 
-                            <div>
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Saldo inicial</label>
-                                <div className="flex items-center gap-2 bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/40 rounded-2xl px-4 py-3">
-                                    <span className="text-slate-400 font-bold">$</span>
-                                    <input
-                                        type="number"
-                                        value={newAccountBalance}
-                                        onChange={e => setNewAccountBalance(e.target.value)}
-                                        placeholder="0"
-                                        className="flex-1 bg-transparent focus:outline-none font-bold text-slate-800 dark:text-slate-100"
-                                    />
+                            {!editingAccountId && (
+                                <div>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Saldo inicial</label>
+                                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/40 rounded-2xl px-4 py-3">
+                                        <span className="text-slate-400 font-bold">$</span>
+                                        <input
+                                            type="number"
+                                            value={newAccountBalance}
+                                            onChange={e => setNewAccountBalance(e.target.value)}
+                                            placeholder="0"
+                                            className="flex-1 bg-transparent focus:outline-none font-bold text-slate-800 dark:text-slate-100"
+                                        />
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             <div>
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Ícono (emoji)</label>
@@ -1165,7 +1256,7 @@ export const FinanceScreen: React.FC = () => {
                                     maxLength={4}
                                     className="w-full bg-slate-50 dark:bg-[#1a0d10] dark:text-slate-200 border border-slate-200 dark:border-[#5a2b35]/40 rounded-2xl px-4 py-3 text-center text-2xl focus:outline-none focus:border-emerald-400 mb-3"
                                 />
-                                <div className="flex gap-2 flex-wrap justify-center">
+                                <div className="flex gap-2 flex-wrap justify-center mb-4">
                                     {['💳', '🏦', '💰', '💎', '📱', '💵', '🪙', '💷', '💶', '🏅', '🎯', '🔒'].map(emoji => (
                                         <button
                                             key={emoji}
@@ -1177,6 +1268,21 @@ export const FinanceScreen: React.FC = () => {
                                         >
                                             {emoji}
                                         </button>
+                                    ))}
+                                </div>
+
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Color de la tarjeta</label>
+                                <div className="flex gap-2 flex-wrap justify-center">
+                                    {ACCOUNT_COLORS.map(c => (
+                                        <button
+                                            key={c.id}
+                                            onClick={() => setNewAccountColor(c.id)}
+                                            className={`w-8 h-8 rounded-full transition-all ${c.colorCode} ${newAccountColor === c.id
+                                                    ? 'ring-4 ring-emerald-400 scale-110 shadow-lg'
+                                                    : 'hover:scale-110 opacity-70 border-2 border-transparent hover:opacity-100'
+                                                }`}
+                                            title={c.id}
+                                        />
                                     ))}
                                 </div>
                             </div>
@@ -1191,7 +1297,7 @@ export const FinanceScreen: React.FC = () => {
                                 Cancelar
                             </button>
                             <button
-                                onClick={addCustomAccount}
+                                onClick={saveCustomAccount}
                                 disabled={!newAccountName.trim() || isAddingAccount}
                                 className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 rounded-2xl font-bold text-sm shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
@@ -1201,7 +1307,7 @@ export const FinanceScreen: React.FC = () => {
                                         Guardando...
                                     </>
                                 ) : (
-                                    'Agregar Cuenta'
+                                    editingAccountId ? 'Guardar Cambios' : 'Agregar Cuenta'
                                 )}
                             </button>
                         </div>
@@ -1222,7 +1328,11 @@ export const FinanceScreen: React.FC = () => {
                             </button>
                             <button onClick={() => {
                                 const isTransfer = txList.find(t => t.id === showDelModal && t.type === 'transfer');
-                                isTransfer ? deleteTransfer() : deleteTransaction();
+                                if (isTransfer) {
+                                    deleteTransfer();
+                                } else {
+                                    deleteTransaction();
+                                }
                             }} className="flex-1 bg-rose-500 text-white py-3 rounded-2xl font-bold text-sm hover:bg-rose-600 transition-colors">
                                 Eliminar
                             </button>
