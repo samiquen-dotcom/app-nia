@@ -1,10 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService } from '../services/firestore';
 import { Features } from '../services/firestore';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useFeatureData } from '../hooks/useFeatureData';
+import type { FinanceData, FinanceAccount, Transaction } from '../types';
+
+const DEFAULT_ACCOUNTS: FinanceAccount[] = [
+    { id: 'nequi', name: 'Nequi', initialBalance: 0, balance: 0 },
+    { id: 'efectivo', name: 'Efectivo', initialBalance: 0, balance: 0 },
+    { id: 'daviplata', name: 'Daviplata', initialBalance: 0, balance: 0 },
+    { id: 'davivienda', name: 'Davivienda', initialBalance: 0, balance: 0 },
+    { id: 'bancolombia', name: 'Bancolombia', initialBalance: 0, balance: 0 },
+    { id: 'bolsillo', name: 'Bolsillo', initialBalance: 0, balance: 0 },
+];
 
 interface Debt {
     id: string;
@@ -34,6 +45,33 @@ export const DebtsScreen: React.FC = () => {
     const [frequency, setFrequency] = useState<'weekly' | 'biweekly' | 'monthly'>('monthly');
     const [dueDate, setDueDate] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+
+    // Pay Modal State
+    const [showPayModal, setShowPayModal] = useState(false);
+    const [debtToPay, setDebtToPay] = useState<Debt | null>(null);
+    const [payAccountId, setPayAccountId] = useState('');
+    const [isPaying, setIsPaying] = useState(false);
+
+    // Fetch accounts
+    const { data: financeData } = useFeatureData<FinanceData>('finance', {
+        accounts: [],
+        transactions: [],
+        customCategories: [],
+        monthStats: {}
+    });
+
+    const accounts = useMemo(() => {
+        const current = financeData.accounts || [];
+        if (current.length === 0) return DEFAULT_ACCOUNTS;
+
+        const merged = [...current];
+        DEFAULT_ACCOUNTS.forEach(def => {
+            if (!merged.find(a => a.id === def.id)) {
+                merged.push(def);
+            }
+        });
+        return merged;
+    }, [financeData.accounts]);
 
     useEffect(() => {
         if (!user) return;
@@ -119,66 +157,88 @@ export const DebtsScreen: React.FC = () => {
         }
     };
 
-    const handlePay = async (debt: Debt) => {
-        if (!user) return;
+    const openPayModal = (debt: Debt) => {
+        setDebtToPay(debt);
+        setPayAccountId('');
+        setShowPayModal(true);
+    };
 
-        // Removed confirm to ensure UX responsiveness
-        // if (!confirm(`¿Marcar "${debt.title}" como pagada?`)) return;
+    const closePayModal = () => {
+        setDebtToPay(null);
+        setShowPayModal(false);
+        setIsPaying(false);
+    };
+
+    const confirmPayment = async () => {
+        if (!user || !debtToPay || !payAccountId) return;
+        setIsPaying(true);
 
         try {
+            const todayStr = () => {
+                const now = new Date();
+                return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            };
+            
+            // 1. Create Finance Expense Transaction
+            const tx: Transaction = {
+                id: Date.now(),
+                type: 'expense',
+                accountId: payAccountId,
+                amount: debtToPay.amount,
+                category: 'Pago/Deuda',
+                emoji: '🧾',
+                description: `Pago: ${debtToPay.title}`,
+                dateISO: todayStr(),
+                date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
+            };
+            await FirestoreService.addTransaction(user.uid, tx);
+
+            // 2. Update Debt
             let updatedDebts = [...debts];
 
-            if (debt.type === 'unique') {
-                // Remove if unique
-                updatedDebts = updatedDebts.filter(d => d.id !== debt.id);
+            if (debtToPay.type === 'unique') {
+                updatedDebts = updatedDebts.filter(d => d.id !== debtToPay.id);
             } else {
-                // Update date if recurring
-                const parts = debt.dueDate.split('-');
-                if (parts.length !== 3) {
-                    alert("Error en formato de fecha. Edita la deuda primero.");
-                    return;
-                }
-                const [y, m, d] = parts.map(Number);
-                const current = new Date(y, m - 1, d); // Month is 0-indexed
-                const next = new Date(current);
+                const parts = debtToPay.dueDate.split('-');
+                if (parts.length === 3) {
+                    const [y, m, d] = parts.map(Number);
+                    const current = new Date(y, m - 1, d);
+                    const next = new Date(current);
 
-                // Add frequency logic
-                if (debt.frequency === 'weekly') {
-                    next.setDate(current.getDate() + 7);
-                } else if (debt.frequency === 'biweekly') {
-                    next.setDate(current.getDate() + 15);
-                } else if (debt.frequency === 'monthly') {
-                    next.setMonth(current.getMonth() + 1);
+                    if (debtToPay.frequency === 'weekly') {
+                        next.setDate(current.getDate() + 7);
+                    } else if (debtToPay.frequency === 'biweekly') {
+                        next.setDate(current.getDate() + 15);
+                    } else {
+                        next.setMonth(current.getMonth() + 1);
+                    }
+
+                    const nextY = next.getFullYear();
+                    const nextM = String(next.getMonth() + 1).padStart(2, '0');
+                    const nextD = String(next.getDate()).padStart(2, '0');
+                    const nextIso = `${nextY}-${nextM}-${nextD}`;
+
+                    updatedDebts = updatedDebts.map(d =>
+                        d.id === debtToPay.id ? { ...d, dueDate: nextIso } : d
+                    );
                 } else {
-                    // Default to monthly if missing
-                    next.setMonth(current.getMonth() + 1);
+                    alert("Error en formato de fecha de la deuda.");
                 }
-
-                // Format back to YYYY-MM-DD manually
-                const nextY = next.getFullYear();
-                const nextM = String(next.getMonth() + 1).padStart(2, '0');
-                const nextD = String(next.getDate()).padStart(2, '0');
-                const nextIso = `${nextY}-${nextM}-${nextD}`;
-
-                updatedDebts = updatedDebts.map(d =>
-                    d.id === debt.id ? { ...d, dueDate: nextIso } : d
-                );
             }
 
-            // Sort
             updatedDebts.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-
-            // Update local state immediately for instant feedback
             setDebts(updatedDebts);
 
-            // Save to Firestore
             const ref = doc(db, `users/${user.uid}/features`, 'debts');
             await setDoc(ref, { items: updatedDebts }, { merge: true });
 
+            closePayModal();
+
         } catch (e) {
             console.error("Error paying debt:", e);
-            alert("Hubo un error al guardar. Recargando...");
-            loadDebts();
+            alert("Hubo un error al guardar el pago.");
+        } finally {
+            setIsPaying(false);
         }
     };
 
@@ -319,7 +379,7 @@ export const DebtsScreen: React.FC = () => {
                                         Eliminar
                                     </button>
                                     <button
-                                        onClick={() => handlePay(debt)}
+                                        onClick={() => openPayModal(debt)}
                                         className="flex-[1.5] py-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1"
                                     >
                                         <span className="material-symbols-outlined text-sm">check_circle</span>
@@ -435,6 +495,61 @@ export const DebtsScreen: React.FC = () => {
                                 className="w-full py-4 mt-6 bg-slate-900 dark:bg-gradient-to-r dark:from-pink-500 dark:to-rose-500 text-white rounded-2xl font-extrabold text-base shadow-lg hover:scale-[1.02] active:scale-95 transition-all mb-2"
                             >
                                 {editingDebt ? 'Guardar cambios' : 'Crear deuda 💸'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Pay Modal */}
+            {showPayModal && debtToPay && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in" onClick={closePayModal}>
+                    <div
+                        className="bg-white dark:bg-[#2d1820] w-full max-w-md rounded-3xl p-6 shadow-2xl relative"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 mb-2">
+                            Pagar cuenta
+                        </h2>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                            ¿Desde qué cuenta vas a pagar los <strong className="text-slate-800 dark:text-slate-200">{fmt(debtToPay.amount)}</strong> para <strong>{debtToPay.title}</strong>?
+                        </p>
+
+                        <div className="space-y-3 max-h-[50vh] overflow-y-auto mb-6 scrollbar-hide pr-2">
+                            {accounts.map((acc: any) => (
+                                <button
+                                    key={acc.id}
+                                    onClick={() => setPayAccountId(acc.id)}
+                                    className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${payAccountId === acc.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-900 dark:text-emerald-100' : 'border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-[#1a0d10] hover:border-emerald-200 text-slate-700 dark:text-slate-200'}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-2xl">{acc.emoji || '💳'}</span>
+                                        <div className="text-left">
+                                            <p className="font-bold text-sm">{acc.name}</p>
+                                            <p className="text-xs opacity-70">Saldo: {fmt(acc.balance ?? acc.initialBalance)}</p>
+                                        </div>
+                                    </div>
+                                    {payAccountId === acc.id && (
+                                        <span className="material-symbols-outlined text-emerald-500">check_circle</span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={closePayModal}
+                                disabled={isPaying}
+                                className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-[#3a2028] text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={confirmPayment}
+                                disabled={!payAccountId || isPaying}
+                                className="flex-1 py-3 rounded-xl bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-200 dark:shadow-none disabled:opacity-50 transition-all flex justify-center items-center gap-2"
+                            >
+                                {isPaying ? 'Pagando...' : 'Confirmar pago'}
                             </button>
                         </div>
                     </div>

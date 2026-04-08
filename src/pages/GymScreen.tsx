@@ -44,7 +44,6 @@ export const GymScreen: React.FC = () => {
     const [selectedMonth, setSelectedMonth] = useState<string>('all');
 
     const weekDates = getWeekDates();
-    const todayEntry = data.history.find(h => h.date === todayStr());
 
     // Calculate progress for current week
     const thisWeekWorkouts = weekDates.filter(date => data.history.some(h => h.date === date)).length;
@@ -68,8 +67,12 @@ export const GymScreen: React.FC = () => {
         return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
     };
 
-    const workoutsPerWeek = filteredHistory.reduce((acc, curr) => {
-        const monday = getMonday(curr.date);
+    // First, get an array of unique dates in the filtered history
+    const uniqueWorkoutDates = Array.from(new Set(filteredHistory.map(h => h.date)));
+    
+    // Then reduce those unique dates for weekly goals
+    const workoutsPerWeek = uniqueWorkoutDates.reduce((acc, date) => {
+        const monday = getMonday(date);
         acc[monday] = (acc[monday] || 0) + 1;
         return acc;
     }, {} as Record<string, number>);
@@ -120,10 +123,12 @@ export const GymScreen: React.FC = () => {
 
     // Allows logging directly from here just in case they don't want to use the modal
     const handleLogToggle = async (date: string, workoutId: string) => {
-        const isCurrentlyLogged = data.history.find(h => h.date === date)?.workoutId === workoutId;
-        let newHistory = data.history.filter(h => h.date !== date);
+        const isCurrentlyLogged = data.history.some(h => h.date === date && h.workoutId === workoutId);
+        let newHistory = [...data.history];
 
-        if (!isCurrentlyLogged) {
+        if (isCurrentlyLogged) {
+            newHistory = newHistory.filter(h => !(h.date === date && h.workoutId === workoutId));
+        } else {
             newHistory.push({ date, workoutId });
         }
 
@@ -196,10 +201,10 @@ export const GymScreen: React.FC = () => {
                 <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-3 ml-1">Esta semana</h3>
                 <div className="flex justify-between bg-white dark:bg-[#2d1820] p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-[#5a2b35]/30">
                     {weekDates.map((date, i) => {
-                        const historyEntry = data.history.find(h => h.date === date);
-                        const hasWorkout = !!historyEntry;
+                        const historyEntries = data.history.filter(h => h.date === date);
+                        const hasWorkout = historyEntries.length > 0;
                         const isToday = date === todayStr();
-                        const assignedRoutine = hasWorkout ? data.customRoutines.find(r => r.id === historyEntry.workoutId) : null;
+                        const routineIcons = historyEntries.map(h => data.customRoutines.find(r => r.id === h.workoutId)?.icon || '💪');
 
                         return (
                             <div key={date} className="flex flex-col items-center gap-2 relative group">
@@ -209,7 +214,12 @@ export const GymScreen: React.FC = () => {
                                         ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
                                         : 'bg-slate-50 dark:bg-[#3a2028] text-slate-300 border border-slate-100 dark:border-white/5'}`}
                                 >
-                                    {hasWorkout ? (assignedRoutine?.icon || '💪') : ''}
+                                    {hasWorkout ? (
+                                        <div className={routineIcons.length > 1 ? "text-xs flex -space-x-1" : ""}>
+                                            {routineIcons.slice(0, 2).map((icon, idx) => <span key={idx} className={routineIcons.length > 1 ? "bg-emerald-100/50 dark:bg-emerald-900/50 rounded-full" : ""}>{icon}</span>)}
+                                            {routineIcons.length > 2 && <span className="text-[8px] font-black self-end ml-0.5">+</span>}
+                                        </div>
+                                    ) : ''}
                                 </div>
                                 <span className={`text-[10px] font-medium uppercase ${isToday ? 'text-emerald-500 font-bold' : 'text-slate-400'}`}>
                                     {WEEK_LABELS[i]}
@@ -231,7 +241,7 @@ export const GymScreen: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {data.customRoutines.map(routine => {
-                        const isLoggedToday = todayEntry?.workoutId === routine.id;
+                        const isLoggedToday = data.history.some(h => h.date === todayStr() && h.workoutId === routine.id);
 
                         return (
                             <div key={routine.id} className={`p-4 rounded-2xl flex items-center justify-between border transition-all ${isLoggedToday ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800' : 'bg-white border-slate-100 dark:bg-[#2d1820] dark:border-[#5a2b35]/30'}`}>

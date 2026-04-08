@@ -5,7 +5,7 @@ import { CycleDayModal } from '../components/CycleDayModal';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService, Features } from '../services/firestore';
 import { getPredictions, calculatePhase, getPredictiveAlert } from '../utils/cycleLogic';
-import type { FinanceData, GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt, WellnessData } from '../types';
+import type { FinanceData, GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt, WellnessData, Transaction } from '../types';
 
 const todayStr = () => {
     const now = new Date();
@@ -74,15 +74,16 @@ export const HomeScreen: React.FC = () => {
             FirestoreService.getFeatureData(user.uid, Features.GOALS),
             FirestoreService.getFeatureData(user.uid, Features.PERIOD),
             FirestoreService.getFeatureData(user.uid, Features.DEBTS),
-            FirestoreService.getFeatureData(user.uid, Features.WELLNESS)
-        ]).then(([finRaw, gymRaw, foodRaw, goalsRaw, periodRaw, debtsRaw, wellnessRaw]) => {
-            const fin = finRaw as FinanceData | null;
+            FirestoreService.getFeatureData(user.uid, Features.WELLNESS),
+            FirestoreService.getTransactions(user.uid, null, 50)
+        ]).then(([finRaw, gymRaw, foodRaw, goalsRaw, periodRaw, debtsRaw, wellnessRaw, txRes]) => {
             const gym = gymRaw as GymData | null;
             const food = foodRaw as FoodData | null;
             const goals = goalsRaw as GoalsData | null;
             const period = periodRaw as PeriodData | null;
             const debtsData = debtsRaw as DebtsData | null;
             const wellness = wellnessRaw as WellnessData | null;
+            const txData = txRes as { transactions: Transaction[] };
 
             // Check for debts due today or overdue
             if (debtsData?.items) {
@@ -133,8 +134,8 @@ export const HomeScreen: React.FC = () => {
                 gymWeeklyCompleted = weekDates.filter(date => gym.history.some(h => h.date === date)).length;
             }
 
-            // Finance: today's expenses (filter by dateISO for reliability)
-            const todaySpent = fin?.transactions
+            // Finance: today's expenses (filter by dateISO for reliability using the recent tx subcollection)
+            const todaySpent = txData.transactions
                 ?.filter(t => t.type === 'expense' && t.dateISO === today)
                 .reduce((sum, t) => sum + t.amount, 0) ?? 0;
 
@@ -503,7 +504,7 @@ export const HomeScreen: React.FC = () => {
                         <div>
                             <p className="font-bold text-slate-700 dark:text-slate-200">Gastado</p>
                             <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">
-                                ${dashboard.todaySpent.toFixed(2)}
+                                ${dashboard.todaySpent.toLocaleString('es-CO')}
                             </span>
                             <div className="flex items-center gap-1 mt-1">
                                 <div className={`w-2 h-2 rounded-full ${dashboard.todaySpent > 0 ? 'bg-rose-400' : 'bg-emerald-400'}`}></div>

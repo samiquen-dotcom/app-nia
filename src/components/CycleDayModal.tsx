@@ -61,7 +61,7 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
 
     // Temp Gym State
     const [wentToGym, setWentToGym] = useState<boolean | null>(null);
-    const [selectedRoutineId, setSelectedRoutineId] = useState<string | undefined>();
+    const [selectedRoutineIds, setSelectedRoutineIds] = useState<string[]>([]);
 
     // Form State
     const [moodLabel, setMoodLabel] = useState<string>('');
@@ -95,13 +95,13 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
         }
 
         // Load Gym existing entry
-        const existingGymEntry = gymData.history.find((h: any) => h.date === date);
-        if (existingGymEntry) {
+        const existingGymEntries = gymData.history.filter((h: any) => h.date === date);
+        if (existingGymEntries.length > 0) {
             setWentToGym(true);
-            setSelectedRoutineId(existingGymEntry.workoutId);
+            setSelectedRoutineIds(existingGymEntries.map((h: any) => h.workoutId));
         } else {
             setWentToGym(null);
-            setSelectedRoutineId(undefined);
+            setSelectedRoutineIds([]);
         }
     }, [date, data.dailyEntries, gymData, requireWizard]);
 
@@ -155,12 +155,12 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
         if (savingBled && energy_level) entry.energy = energy_level;
 
         // Handle Gym update
-        if (wentToGym === true && selectedRoutineId) {
-            // Include routine in cycle entry for easy reading
-            entry.gymRoutineId = selectedRoutineId;
+        if (wentToGym === true && selectedRoutineIds.length > 0) {
+            // Include routines in cycle entry for easy reading
+            entry.gymRoutineIds = selectedRoutineIds;
             // Also save to Gym feature data
             const newHistory = gymData.history.filter((h: any) => h.date !== date);
-            newHistory.push({ date, workoutId: selectedRoutineId });
+            selectedRoutineIds.forEach(id => newHistory.push({ date, workoutId: id }));
             await saveGym({ ...gymData, history: newHistory });
         } else if (wentToGym === false) {
             // Remove from gym history if previously there
@@ -321,12 +321,12 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
                             {wentToGym && (
                                 <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl flex items-center gap-4 border border-emerald-100 dark:border-emerald-900/30">
                                     <div className="w-10 h-10 rounded-full bg-white dark:bg-[#3a2028] flex items-center justify-center text-xl shadow-sm">
-                                        {gymData.customRoutines.find((r: any) => r.id === selectedRoutineId)?.icon || '🏋️'}
+                                        {selectedRoutineIds.length > 0 ? gymData.customRoutines.find((r: any) => r.id === selectedRoutineIds[0])?.icon : '🏋️'}
                                     </div>
                                     <div>
                                         <p className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">¡Fuiste al Gym!</p>
                                         <p className="font-bold text-slate-700 dark:text-slate-200">
-                                            {gymData.customRoutines.find((r: any) => r.id === selectedRoutineId)?.label || 'Rutina completada'}
+                                            {selectedRoutineIds.length > 0 ? selectedRoutineIds.map(id => gymData.customRoutines.find((r: any) => r.id === id)?.label || '').filter(Boolean).join(', ') : 'Rutina completada'}
                                         </p>
                                     </div>
                                 </div>
@@ -569,14 +569,14 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
                                         </label>
                                         <div className="flex gap-4">
                                             <button
-                                                onClick={() => { setWentToGym(true); if (gymData.customRoutines.length > 0) setSelectedRoutineId(gymData.customRoutines[0].id); }}
+                                                onClick={() => { setWentToGym(true); if (gymData.customRoutines.length > 0 && selectedRoutineIds.length === 0) setSelectedRoutineIds([gymData.customRoutines[0].id]); }}
                                                 className={`flex-1 py-5 rounded-3xl font-bold text-xl transition-all border-2 flex flex-col items-center justify-center gap-2 ${wentToGym === true ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/50 scale-105' : 'bg-white dark:bg-[#2d1820] border-emerald-100 dark:border-emerald-900/30 text-emerald-500 hover:bg-emerald-50'}`}
                                             >
                                                 <span className="text-4xl drop-shadow-sm border-transparent" style={{ textShadow: wentToGym === true ? 'none' : '0 0 0 white, 0 0 1px emerald' }}>💪</span>
                                                 Sí
                                             </button>
                                             <button
-                                                onClick={() => { setWentToGym(false); setSelectedRoutineId(undefined); }}
+                                                onClick={() => { setWentToGym(false); setSelectedRoutineIds([]); }}
                                                 className={`flex-1 py-5 rounded-3xl font-bold text-xl transition-all border-2 flex flex-col items-center justify-center gap-2 ${wentToGym === false ? 'bg-slate-800 dark:bg-slate-200 border-slate-800 dark:border-slate-200 text-white dark:text-slate-900 shadow-lg scale-105' : 'bg-white dark:bg-[#2d1820] border-slate-200 dark:border-slate-800/30 text-slate-400 hover:bg-slate-50'}`}
                                             >
                                                 <span className={`text-4xl drop-shadow-sm ${wentToGym === false ? '' : 'grayscale opacity-50'}`}>🛋️</span>
@@ -595,8 +595,8 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
                                                 {gymData.customRoutines.map((routine: any) => (
                                                     <button
                                                         key={routine.id}
-                                                        onClick={() => setSelectedRoutineId(routine.id)}
-                                                        className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all flex items-center gap-3 border ${selectedRoutineId === routine.id ? 'bg-emerald-500 border-emerald-500 text-white shadow-md scale-[1.02]' : 'bg-white dark:bg-[#1a0d10] border-emerald-100 dark:border-emerald-800/50 text-slate-600 dark:text-slate-300 hover:border-emerald-300'}`}
+                                                        onClick={() => setSelectedRoutineIds(prev => prev.includes(routine.id) ? prev.filter(r => r !== routine.id) : [...prev, routine.id])}
+                                                        className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all flex items-center gap-3 border ${selectedRoutineIds.includes(routine.id) ? 'bg-emerald-500 border-emerald-500 text-white shadow-md scale-[1.02]' : 'bg-white dark:bg-[#1a0d10] border-emerald-100 dark:border-emerald-800/50 text-slate-600 dark:text-slate-300 hover:border-emerald-300'}`}
                                                     >
                                                         <span className="text-xl bg-white/20 rounded-md p-1 h-8 w-8 flex items-center justify-center">{routine.icon}</span>
                                                         <span>{routine.label}</span>
@@ -615,7 +615,7 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
                                         </button>
                                         <button
                                             onClick={handleSavePhase4}
-                                            disabled={wentToGym === null || (wentToGym === true && !selectedRoutineId)}
+                                            disabled={wentToGym === null || (wentToGym === true && selectedRoutineIds.length === 0)}
                                             className="flex-[2] py-4 rounded-2xl font-bold text-white bg-slate-900 dark:bg-pink-500 disabled:opacity-50 shadow-lg active:scale-95 transition-transform"
                                         >
                                             Finalizar ✅

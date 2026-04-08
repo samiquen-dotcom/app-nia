@@ -22,6 +22,12 @@ const ACCOUNT_COLORS = [
     { id: 'emerald', gradient: 'from-emerald-200 to-teal-300', textColor: 'text-teal-900', badge: 'bg-white/50 text-teal-900', colorCode: 'bg-emerald-400' },
     { id: 'amber', gradient: 'from-amber-100 to-yellow-300', textColor: 'text-amber-900', badge: 'bg-white/50 text-amber-900', colorCode: 'bg-amber-400' },
     { id: 'rose', gradient: 'from-rose-200 to-red-300', textColor: 'text-rose-900', badge: 'bg-white/50 text-rose-900', colorCode: 'bg-rose-400' },
+    { id: 'cyan', gradient: 'from-cyan-200 to-sky-300', textColor: 'text-sky-900', badge: 'bg-white/50 text-sky-900', colorCode: 'bg-cyan-400' },
+    { id: 'violet', gradient: 'from-violet-200 to-purple-300', textColor: 'text-purple-900', badge: 'bg-white/50 text-purple-900', colorCode: 'bg-violet-400' },
+    { id: 'lime', gradient: 'from-lime-200 to-green-300', textColor: 'text-green-900', badge: 'bg-white/50 text-green-900', colorCode: 'bg-lime-400' },
+    { id: 'orange', gradient: 'from-orange-200 to-orange-300', textColor: 'text-orange-900', badge: 'bg-white/50 text-orange-900', colorCode: 'bg-orange-400' },
+    { id: 'teal', gradient: 'from-teal-200 to-emerald-300', textColor: 'text-emerald-900', badge: 'bg-white/50 text-emerald-900', colorCode: 'bg-teal-400' },
+    { id: 'black', gradient: 'from-gray-700 to-black', textColor: 'text-white', badge: 'bg-black/50 text-white', colorCode: 'bg-black' },
 ];
 
 const DEFAULT_ACCOUNTS: FinanceAccount[] = [
@@ -324,9 +330,7 @@ export const FinanceScreen: React.FC = () => {
         if (!trToAccount) { setTrError('Selecciona la cuenta de destino.'); return; }
         if (trFromAccount === trToAccount) { setTrError('Las cuentas deben ser diferentes.'); return; }
 
-        const fromAcc = accounts.find(a => a.id === trFromAccount);
-        const currentBalance = fromAcc?.balance ?? fromAcc?.initialBalance ?? 0;
-        if (val > currentBalance) { setTrError('Saldo insuficiente en la cuenta de origen.'); return; }
+        // Permitir saldo negativo (útil para tarjetas de crédito o sobregiros)
 
         setIsSaving(true);
         try {
