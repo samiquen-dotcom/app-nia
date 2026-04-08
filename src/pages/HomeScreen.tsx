@@ -5,7 +5,7 @@ import { CycleDayModal } from '../components/CycleDayModal';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService, Features } from '../services/firestore';
 import { getPredictions, calculatePhase, getPredictiveAlert } from '../utils/cycleLogic';
-import type { FinanceData, GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt, WellnessData, Transaction } from '../types';
+import type { GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt, WellnessData, Transaction } from '../types';
 
 const todayStr = () => {
     const now = new Date();
@@ -76,7 +76,7 @@ export const HomeScreen: React.FC = () => {
             FirestoreService.getFeatureData(user.uid, Features.DEBTS),
             FirestoreService.getFeatureData(user.uid, Features.WELLNESS),
             FirestoreService.getTransactions(user.uid, null, 50)
-        ]).then(([finRaw, gymRaw, foodRaw, goalsRaw, periodRaw, debtsRaw, wellnessRaw, txRes]) => {
+        ]).then(([_, gymRaw, foodRaw, goalsRaw, periodRaw, debtsRaw, wellnessRaw, txRes]) => {
             const gym = gymRaw as GymData | null;
             const food = foodRaw as FoodData | null;
             const goals = goalsRaw as GoalsData | null;
