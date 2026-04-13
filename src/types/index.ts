@@ -41,7 +41,8 @@ export interface TransferTransaction {
 export interface MonthStats {
     income: number;
     expense: number;
-    categories: Record<string, { total: number; emoji: string }>;
+    categories: Record<string, { total: number; emoji: string }>; // Expense categories (legacy + new)
+    incomeCategories?: Record<string, { total: number; emoji: string }>; // Income categories (new)
 }
 
 export interface FinanceData {

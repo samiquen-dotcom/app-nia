@@ -203,6 +203,12 @@ export const FinanceScreen: React.FC = () => {
 
     // Selector de meses
     const [selectedMonth, setSelectedMonth] = useState(thisMonth);
+    const [showAllCats, setShowAllCats] = useState(false);
+
+    // Resetear "ver más" cuando cambia el mes
+    useEffect(() => {
+        setShowAllCats(false);
+    }, [selectedMonth]);
 
     // Obtener todos los meses con datos disponibles
     const availableMonths = useMemo(() => {
@@ -224,16 +230,27 @@ export const FinanceScreen: React.FC = () => {
 
     const catStats = useMemo(() => {
         const cats = currentMonthStats.categories || {};
-        return Object.entries(cats)
+        const sorted = Object.entries(cats)
             .map(([label, v]) => ({ label, ...v }))
-            .sort((a, b) => b.total - a.total)
-            .slice(0, 5);
-    }, [currentMonthStats]);
+            .sort((a, b) => b.total - a.total);
+        return showAllCats ? sorted : sorted.slice(0, 5);
+    }, [currentMonthStats, showAllCats]);
 
-    // Stats de ingresos por categoría (basado en transacciones cargadas)
+    // Stats de ingresos por categoría (basado en monthStats, igual que gastos)
+    // Fallback: si incomeCategories está vacío (datos antiguos), calcula desde txList
     const incomeCatStats = useMemo(() => {
-        const incomeByCategory: Record<string, { total: number; emoji: string }> = {};
+        const incomeCats = currentMonthStats.incomeCategories || {};
 
+        // Si hay datos nuevos en incomeCategories, úsalos
+        if (Object.keys(incomeCats).length > 0) {
+            return Object.entries(incomeCats)
+                .map(([label, v]) => ({ label, ...v }))
+                .sort((a, b) => b.total - a.total)
+                .slice(0, showAllCats ? undefined : 5);
+        }
+
+        // Fallback: datos antiguos - calcular desde txList
+        const incomeByCategory: Record<string, { total: number; emoji: string }> = {};
         txList
             .filter(t => t.type === 'income')
             .forEach(t => {
@@ -247,8 +264,19 @@ export const FinanceScreen: React.FC = () => {
         return Object.entries(incomeByCategory)
             .map(([label, v]) => ({ label, ...v }))
             .sort((a, b) => b.total - a.total)
-            .slice(0, 5);
-    }, [txList]);
+            .slice(0, showAllCats ? undefined : 5);
+    }, [currentMonthStats, txList, showAllCats]);
+
+    const totalExpenseCats = Object.keys(currentMonthStats.categories || {}).length;
+    // totalIncomeCats: usa incomeCategories si existe, sino calcula fallback desde txList
+    const totalIncomeCats = useMemo(() => {
+        const incomeCats = currentMonthStats.incomeCategories || {};
+        if (Object.keys(incomeCats).length > 0) return Object.keys(incomeCats).length;
+        // Fallback
+        const cats = new Set<string>();
+        txList.filter(t => t.type === 'income').forEach(t => cats.add(t.category));
+        return cats.size;
+    }, [currentMonthStats, txList]);
 
     const allCats = txType === 'expense'
         ? [...EXPENSE_CATS, ...customCats]
@@ -470,7 +498,7 @@ export const FinanceScreen: React.FC = () => {
         const acc = accounts.find(a => a.id === accId);
         if (!acc) return null;
         if (!accId.startsWith('custom_')) return ACCOUNT_META[accId] || { gradient: 'from-slate-200 to-gray-300', textColor: 'text-gray-900', badge: 'bg-white/50 text-gray-900', emoji: '💳' };
-        
+
         const colorObj = ACCOUNT_COLORS.find(c => c.id === acc.color) || ACCOUNT_COLORS[0];
         return {
             gradient: colorObj.gradient,
@@ -547,7 +575,7 @@ export const FinanceScreen: React.FC = () => {
                         <button
                             onClick={() => setIsManagingAccounts(!isManagingAccounts)}
                             className={`text-[10px] font-bold flex items-center gap-1 transition-colors ${isManagingAccounts ? 'text-rose-500 hover:text-rose-600' : 'text-slate-400 hover:text-slate-500'}`}
-                        >   
+                        >
                             <span className="material-symbols-outlined text-xs">{isManagingAccounts ? 'close' : 'settings'}</span>
                             {isManagingAccounts ? 'Listo' : 'Administrar'}
                         </button>
@@ -600,7 +628,7 @@ export const FinanceScreen: React.FC = () => {
                                             className="absolute -top-2 right-6 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform z-10"
                                             title="Editar cuenta"
                                         >
-                                            <span className="material-symbols-outlined text-xs" style={{fontSize: '11px'}}>edit</span>
+                                            <span className="material-symbols-outlined text-xs" style={{ fontSize: '11px' }}>edit</span>
                                         </button>
                                     </>
                                 )}
@@ -658,8 +686,8 @@ export const FinanceScreen: React.FC = () => {
                             <button
                                 onClick={() => setShowIncomeStats(false)}
                                 className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${!showIncomeStats
-                                        ? 'bg-rose-400 text-white shadow-sm'
-                                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                                    ? 'bg-rose-400 text-white shadow-sm'
+                                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                                     }`}
                             >
                                 Gastos
@@ -667,8 +695,8 @@ export const FinanceScreen: React.FC = () => {
                             <button
                                 onClick={() => setShowIncomeStats(true)}
                                 className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${showIncomeStats
-                                        ? 'bg-emerald-400 text-white shadow-sm'
-                                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                                    ? 'bg-emerald-400 text-white shadow-sm'
+                                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                                     }`}
                             >
                                 Ingresos
@@ -751,6 +779,15 @@ export const FinanceScreen: React.FC = () => {
                                         </div>
                                     );
                                 })}
+                                {/* Botón Ver más/menos para ingresos */}
+                                {(totalIncomeCats > 5) && (
+                                    <button
+                                        onClick={() => setShowAllCats(prev => !prev)}
+                                        className="w-full mt-2 text-xs text-emerald-500 font-bold hover:text-emerald-600 transition-colors"
+                                    >
+                                        {showAllCats ? 'Ver menos' : `Ver más (${totalIncomeCats - 5} más)`}
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <p className="text-center text-sm text-slate-400 py-4">Sin ingresos en {formatMonthName(selectedMonth)}</p>
@@ -779,6 +816,15 @@ export const FinanceScreen: React.FC = () => {
                                         </div>
                                     );
                                 })}
+                                {/* Botón Ver más/menos para gastos */}
+                                {((showIncomeStats && totalIncomeCats > 5) || (!showIncomeStats && totalExpenseCats > 5)) && (
+                                    <button
+                                        onClick={() => setShowAllCats(prev => !prev)}
+                                        className="w-full mt-2 text-xs text-emerald-500 font-bold hover:text-emerald-600 transition-colors"
+                                    >
+                                        {showAllCats ? 'Ver menos' : `Ver más (${(showIncomeStats ? totalIncomeCats : totalExpenseCats) - 5} más)`}
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <p className="text-center text-sm text-slate-400 py-4">Sin gastos en {formatMonthName(selectedMonth)}</p>
@@ -819,10 +865,10 @@ export const FinanceScreen: React.FC = () => {
                                 >
                                     {/* Icon bubble */}
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-xl ${isTransfer
-                                            ? 'bg-blue-50 dark:bg-blue-900/20'
-                                            : t.type === 'expense'
-                                                ? 'bg-rose-50 dark:bg-rose-900/20'
-                                                : 'bg-emerald-50 dark:bg-emerald-900/20'
+                                        ? 'bg-blue-50 dark:bg-blue-900/20'
+                                        : t.type === 'expense'
+                                            ? 'bg-rose-50 dark:bg-rose-900/20'
+                                            : 'bg-emerald-50 dark:bg-emerald-900/20'
                                         }`}>
                                         {isTransfer ? '💸' : (t.emoji || (t.type === 'expense' ? '💸' : '💰'))}
                                     </div>
@@ -860,10 +906,10 @@ export const FinanceScreen: React.FC = () => {
                                     {/* Amount + delete */}
                                     <div className="flex items-center gap-2 flex-shrink-0">
                                         <span className={`font-extrabold text-sm ${isTransfer
-                                                ? 'text-blue-500'
-                                                : t.type === 'expense'
-                                                    ? 'text-rose-500'
-                                                    : 'text-emerald-500'
+                                            ? 'text-blue-500'
+                                            : t.type === 'expense'
+                                                ? 'text-rose-500'
+                                                : 'text-emerald-500'
                                             }`}>
                                             {isTransfer ? '' : (t.type === 'expense' ? '-' : '+')}{fmt(t.amount)}
                                         </span>
@@ -1092,10 +1138,10 @@ export const FinanceScreen: React.FC = () => {
                                                 onClick={() => setTrFromAccount(acc.id)}
                                                 disabled={trToAccount === acc.id}
                                                 className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all ${selected
-                                                        ? `border-blue-400 bg-blue-50 dark:bg-blue-900/30 scale-105`
-                                                        : trToAccount === acc.id
-                                                            ? 'border-slate-100 dark:border-[#5a2b35]/30 bg-slate-100 dark:bg-[#2d1820] opacity-50 cursor-not-allowed'
-                                                            : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'
+                                                    ? `border-blue-400 bg-blue-50 dark:bg-blue-900/30 scale-105`
+                                                    : trToAccount === acc.id
+                                                        ? 'border-slate-100 dark:border-[#5a2b35]/30 bg-slate-100 dark:bg-[#2d1820] opacity-50 cursor-not-allowed'
+                                                        : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'
                                                     }`}
                                             >
                                                 <span className="text-xl">{meta?.emoji || '💳'}</span>
@@ -1123,10 +1169,10 @@ export const FinanceScreen: React.FC = () => {
                                                 onClick={() => setTrToAccount(acc.id)}
                                                 disabled={trFromAccount === acc.id}
                                                 className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all ${selected
-                                                        ? `border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 scale-105`
-                                                        : trFromAccount === acc.id
-                                                            ? 'border-slate-100 dark:border-[#5a2b35]/30 bg-slate-100 dark:bg-[#2d1820] opacity-50 cursor-not-allowed'
-                                                            : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'
+                                                    ? `border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 scale-105`
+                                                    : trFromAccount === acc.id
+                                                        ? 'border-slate-100 dark:border-[#5a2b35]/30 bg-slate-100 dark:bg-[#2d1820] opacity-50 cursor-not-allowed'
+                                                        : 'border-slate-100 dark:border-[#5a2b35]/30 bg-white dark:bg-[#2d1820]'
                                                     }`}
                                             >
                                                 <span className="text-xl">{meta?.emoji || '💳'}</span>
@@ -1266,8 +1312,8 @@ export const FinanceScreen: React.FC = () => {
                                             key={emoji}
                                             onClick={() => setNewAccountEmoji(emoji)}
                                             className={`w-10 h-10 rounded-lg text-xl flex items-center justify-center transition-all ${newAccountEmoji === emoji
-                                                    ? 'bg-emerald-100 dark:bg-emerald-900/30 border-2 border-emerald-500 scale-110'
-                                                    : 'bg-slate-100 dark:bg-[#3a2028] border-2 border-transparent hover:scale-105'
+                                                ? 'bg-emerald-100 dark:bg-emerald-900/30 border-2 border-emerald-500 scale-110'
+                                                : 'bg-slate-100 dark:bg-[#3a2028] border-2 border-transparent hover:scale-105'
                                                 }`}
                                         >
                                             {emoji}
@@ -1282,8 +1328,8 @@ export const FinanceScreen: React.FC = () => {
                                             key={c.id}
                                             onClick={() => setNewAccountColor(c.id)}
                                             className={`w-8 h-8 rounded-full transition-all ${c.colorCode} ${newAccountColor === c.id
-                                                    ? 'ring-4 ring-emerald-400 scale-110 shadow-lg'
-                                                    : 'hover:scale-110 opacity-70 border-2 border-transparent hover:opacity-100'
+                                                ? 'ring-4 ring-emerald-400 scale-110 shadow-lg'
+                                                : 'hover:scale-110 opacity-70 border-2 border-transparent hover:opacity-100'
                                                 }`}
                                             title={c.id}
                                         />

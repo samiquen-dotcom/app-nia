@@ -132,14 +132,21 @@ export const FirestoreService = {
                 // 3. Actualizar estadísticas del mes
                 const monthKey = tx.dateISO.slice(0, 7); // YYYY-MM
                 if (!monthStats[monthKey]) {
-                    monthStats[monthKey] = { income: 0, expense: 0, categories: {} };
+                    monthStats[monthKey] = { income: 0, expense: 0, categories: {}, incomeCategories: {} };
                 }
 
                 if (tx.type === 'income') {
                     monthStats[monthKey].income += tx.amount;
+                    // Stats por categoría (ingresos) - campo separado
+                    const incCats = monthStats[monthKey].incomeCategories || {};
+                    const catStats = incCats[tx.category] || { total: 0, emoji: tx.emoji };
+                    catStats.total += tx.amount;
+                    catStats.emoji = tx.emoji;
+                    incCats[tx.category] = catStats;
+                    monthStats[monthKey].incomeCategories = incCats;
                 } else {
                     monthStats[monthKey].expense += tx.amount;
-                    // Stats por categoría
+                    // Stats por categoría (gastos)
                     const catStats = monthStats[monthKey].categories[tx.category] || { total: 0, emoji: tx.emoji };
                     catStats.total += tx.amount;
                     catStats.emoji = tx.emoji; // Update emoji just in case
@@ -297,6 +304,14 @@ export const FirestoreService = {
                 if (monthStats[monthKey]) {
                     if (tx.type === 'income') {
                         monthStats[monthKey].income -= tx.amount;
+                        const incCats = monthStats[monthKey].incomeCategories || {};
+                        if (incCats[tx.category]) {
+                            incCats[tx.category].total -= tx.amount;
+                            if (incCats[tx.category].total <= 0) {
+                                delete incCats[tx.category];
+                            }
+                        }
+                        monthStats[monthKey].incomeCategories = incCats;
                     } else {
                         monthStats[monthKey].expense -= tx.amount;
                         if (monthStats[monthKey].categories[tx.category]) {
@@ -348,10 +363,16 @@ export const FirestoreService = {
 
             // 3. Update stats locally
             const monthKey = tx.dateISO.slice(0, 7);
-            if (!monthStats[monthKey]) monthStats[monthKey] = { income: 0, expense: 0, categories: {} };
+            if (!monthStats[monthKey]) monthStats[monthKey] = { income: 0, expense: 0, categories: {}, incomeCategories: {} };
 
             if (tx.type === 'income') {
                 monthStats[monthKey].income += tx.amount;
+                const incCats = monthStats[monthKey].incomeCategories || {};
+                const catStats = incCats[tx.category] || { total: 0, emoji: tx.emoji };
+                catStats.total += tx.amount;
+                catStats.emoji = tx.emoji;
+                incCats[tx.category] = catStats;
+                monthStats[monthKey].incomeCategories = incCats;
             } else {
                 monthStats[monthKey].expense += tx.amount;
                 const catStats = monthStats[monthKey].categories[tx.category] || { total: 0, emoji: tx.emoji };
@@ -407,10 +428,16 @@ export const FirestoreService = {
 
                 // Stats
                 const monthKey = tx.dateISO.slice(0, 7);
-                if (!monthStats[monthKey]) monthStats[monthKey] = { income: 0, expense: 0, categories: {} };
+                if (!monthStats[monthKey]) monthStats[monthKey] = { income: 0, expense: 0, categories: {}, incomeCategories: {} };
 
                 if (tx.type === 'income') {
                     monthStats[monthKey].income += tx.amount;
+                    const incCats = monthStats[monthKey].incomeCategories || {};
+                    const catStats = incCats[tx.category] || { total: 0, emoji: tx.emoji };
+                    catStats.total += tx.amount;
+                    catStats.emoji = tx.emoji;
+                    incCats[tx.category] = catStats;
+                    monthStats[monthKey].incomeCategories = incCats;
                 } else {
                     monthStats[monthKey].expense += tx.amount;
                     const cat = tx.category;
