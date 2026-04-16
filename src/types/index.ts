@@ -25,6 +25,10 @@ export interface Transaction {
     // Para transferencias
     fromAccountId?: string;
     toAccountId?: string;
+    // Origen del gasto (ej. viaje)
+    sourceType?: 'travel' | 'manual';
+    sourceTripId?: string;
+    sourceExpenseId?: string;
 }
 
 export interface TransferTransaction {
@@ -183,4 +187,235 @@ export interface FoodDay {
 
 export interface FoodData {
     days: FoodDay[];
+}
+
+// ─── Travel ───────────────────────────────────────────────────────────────────
+export type TripStatus = 'planned' | 'active' | 'completed' | 'cancelled';
+
+export type TripType = 'beach' | 'mountain' | 'city' | 'business' | 'rural' | 'international' | 'other';
+
+export type TripColor = 'pink' | 'blue' | 'green' | 'purple' | 'orange' | 'teal' | 'indigo' | 'rose';
+
+export type PackingPriority = 'essential' | 'recommended' | 'optional';
+
+export interface PackingItem {
+    id: string;
+    name: string;
+    category: string;
+    packed: boolean;
+    quantity?: number;            // Cantidad. default 1
+    priority?: PackingPriority;   // Prioridad. default 'recommended'
+    weight?: number;              // Peso en gramos por unidad
+    purchased?: boolean;          // ¿Ya lo tienes / hay que comprar?
+    needsToBuy?: boolean;         // Marca explícita "comprar antes"
+    assignedTo?: string;          // Companion id (quién lo lleva)
+    notes?: string;
+    autoSuggested?: boolean;      // Generado por sugerencia (clima/ciclo/duración)
+    suggestionSource?: 'period' | 'duration' | 'climate' | 'type';
+}
+
+export type ExpenseCategory =
+    | 'transport'
+    | 'alojamiento'
+    | 'comida'
+    | 'actividades'
+    | 'compras'
+    | 'salud'
+    | 'propinas'
+    | 'otros';
+
+export interface TravelExpense {
+    id: string;
+    category: ExpenseCategory;
+    amount: number;               // En la moneda en que se pagó (currency)
+    description: string;
+    dateISO: string;
+    currency?: string;            // ISO 4217 (USD, COP, EUR...). Default = trip.baseCurrency
+    amountInBase?: number;        // Convertido a baseCurrency (para sumas globales)
+    paidBy?: string;              // Companion id. 'me' por default
+    splitWith?: string[];         // Companion ids con los que se divide (incluye paidBy)
+    syncedToFinance?: boolean;    // Si se reflejó como Transaction en Finance
+    financeAccountId?: string;    // Cuenta de origen al sincronizar
+    financeTxId?: number;         // ID de la transacción creada
+    linkedActivityId?: string;    // Actividad de itinerario asociada
+}
+
+export type ActivityType = 'food' | 'tour' | 'transport' | 'rest' | 'meeting' | 'shopping' | 'event' | 'other';
+
+export interface Trip {
+    id: string;
+    destination: string;          // Destino principal (compat). Refleja destinations[0]?.name si existe
+    type: TripType;
+    status: TripStatus;
+    startDate: string;            // YYYY-MM-DD
+    endDate: string;              // YYYY-MM-DD
+    budget: number;               // En baseCurrency
+    notes: string;
+    packingList: PackingItem[];
+    expenses: TravelExpense[];
+    createdAt: number;            // timestamp
+    color?: TripColor;
+    preTripChecklist?: PreTripChecklistItem[];
+    itinerary?: ItineraryDay[];
+    // ── NUEVOS ────────────────────────────────────────────────────────────
+    destinations?: TripDestination[];      // Multi-destino opcional
+    baseCurrency?: string;                  // ISO 4217. Default 'COP'
+    countryCode?: string;                   // ISO 3166 del destino principal
+    reservations?: Reservation[];
+    companions?: Companion[];
+    journal?: TripJournalEntry[];
+    recap?: TripRecap;
+    customChecklistCategories?: ChecklistCategory[];
+    customPackingCategories?: string[];
+    rating?: number;                        // 1-5 después del viaje
+    transportToDestination?: 'plane' | 'car' | 'bus' | 'train' | 'boat' | 'other';
+}
+
+export interface TripDestination {
+    id: string;
+    name: string;                           // "Madrid", "Barcelona"
+    countryCode?: string;                   // ISO 3166
+    startDate: string;                      // YYYY-MM-DD
+    endDate: string;                        // YYYY-MM-DD
+    notes?: string;
+}
+
+export type ReservationType =
+    | 'flight'
+    | 'hotel'
+    | 'car'
+    | 'transfer'
+    | 'tour'
+    | 'restaurant'
+    | 'event'
+    | 'insurance'
+    | 'other';
+
+export interface Reservation {
+    id: string;
+    type: ReservationType;
+    title: string;                          // "Avianca Bogotá → Cancún" / "Hotel Riu Cancún"
+    confirmationCode?: string;              // PNR / código de reserva
+    provider?: string;                      // Aerolínea, cadena hotelera, agencia
+    cost?: number;
+    currency?: string;
+    startDate?: string;                     // YYYY-MM-DD
+    endDate?: string;                       // YYYY-MM-DD
+    notes?: string;
+    contact?: string;                       // Teléfono o email
+    address?: string;
+    referenceUrl?: string;                  // Link a reserva online (Booking, Airbnb…)
+    paid?: boolean;
+    syncedToFinance?: boolean;              // Si se reflejó como Transaction en Finance al pagar
+    financeTxId?: number;                   // ID de la transacción creada
+    // ── Vuelos ────
+    airline?: string;
+    flightNumber?: string;
+    departureAirport?: string;
+    departureTime?: string;                 // HH:MM
+    departureTerminal?: string;
+    departureGate?: string;
+    arrivalAirport?: string;
+    arrivalTime?: string;                   // HH:MM
+    arrivalTerminal?: string;
+    seat?: string;
+    // ── Hotel ────
+    checkInTime?: string;
+    checkOutTime?: string;
+    roomNumber?: string;
+}
+
+export interface Companion {
+    id: string;
+    name: string;
+    color?: string;                         // Hex o tailwind color name
+    emoji?: string;
+    isMe?: boolean;                         // El usuario actual
+}
+
+export interface TripJournalEntry {
+    date: string;                           // YYYY-MM-DD
+    moodEmoji?: string;
+    moodLabel?: string;
+    highlight?: string;                     // Mejor momento del día
+    notes?: string;
+    photoNotes?: string;                    // URLs/links de fotos (texto, sin upload)
+    weather?: string;
+}
+
+export interface TripRecap {
+    favoriteMoment?: string;
+    bestPlace?: string;
+    worstPart?: string;
+    lessonsLearned?: string;
+    wouldReturn?: boolean;
+    overallRating?: number;                 // 1-5
+    completedAt?: number;                   // timestamp
+}
+
+export interface ChecklistCategory {
+    key: string;
+    label: string;
+    icon: string;
+    color: string;
+}
+
+export interface PreTripChecklistItem {
+    id: string;
+    task: string;
+    completed: boolean;
+    category: string;                       // Antes era enum cerrado, ahora libre (compat)
+    dueDate?: string;                       // YYYY-MM-DD
+    priority?: 'low' | 'medium' | 'high';
+    notes?: string;
+}
+
+export interface ItineraryActivity {
+    id: string;
+    time: string;                           // HH:MM
+    description: string;
+    location?: string;
+    completed: boolean;
+    notes?: string;
+    type?: ActivityType;
+    duration?: number;                      // Minutos
+    estimatedCost?: number;
+    currency?: string;
+    linkedExpenseId?: string;               // Si se sincronizó como gasto
+    linkedReservationId?: string;
+}
+
+export interface ItineraryDay {
+    id: string;
+    date: string;                           // YYYY-MM-DD
+    dayNumber: number;
+    activities: ItineraryActivity[];
+    notes?: string;
+}
+
+export interface TravelData {
+    trips: Trip[];
+    packingTemplates?: PackingTemplate[];
+    tripTemplates?: TripTemplate[];         // Templates completos (packing + checklist + itinerario base)
+    defaultCompanions?: Companion[];        // Companions reutilizables entre viajes
+}
+
+export interface PackingTemplate {
+    id: string;
+    name: string;
+    description: string;
+    items: Omit<PackingItem, 'id'>[];
+    createdAt: number;
+}
+
+export interface TripTemplate {
+    id: string;
+    name: string;
+    description: string;
+    type: TripType;
+    durationDays?: number;
+    packingItems: Omit<PackingItem, 'id'>[];
+    checklistItems: Omit<PreTripChecklistItem, 'id'>[];
+    itineraryActivities?: Array<{ dayNumber: number; activities: Omit<ItineraryActivity, 'id'>[] }>;
+    createdAt: number;
 }

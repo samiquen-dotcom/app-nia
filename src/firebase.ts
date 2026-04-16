@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCPr6TFhnmV8B_qHzl7tzxjSKyMb7hsonQ",
@@ -14,4 +14,5 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
-export const db = getFirestore(app);
+// ignoreUndefinedProperties: campos opcionales en TS pueden ser undefined; Firestore los rechaza por default.
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });

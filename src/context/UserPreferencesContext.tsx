@@ -25,6 +25,7 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
     { id: 'food', path: '/food', icon: 'nutrition', label: 'Comidas', enabled: true },
     { id: 'wellness', path: '/wellness', icon: 'self_improvement', label: 'Bienestar', enabled: true },
     { id: 'goals', path: '/goals', icon: 'stars', label: 'Metas', enabled: true },
+    { id: 'travel', path: '/travel', icon: 'flight', label: 'Viajes', enabled: true },
 ];
 
 interface UserPreferencesContextType {
@@ -57,9 +58,23 @@ export const UserPreferencesProvider: React.FC<{ children: ReactNode }> = ({ chi
 
                 if (docSnap.exists()) {
                     const data = docSnap.data();
+                    let navItems: NavItem[] = data.navItems ?? DEFAULT_NAV_ITEMS;
+
+                    // Migración: Agregar items que falten (Viajes, etc.)
+                    const missingItems = DEFAULT_NAV_ITEMS.filter(defaultItem =>
+                        !navItems.some(item => item.id === defaultItem.id)
+                    );
+                    if (missingItems.length > 0) {
+                        navItems = [...navItems, ...missingItems];
+                        // Guardar actualización
+                        const docRef = doc(db, 'users', user.uid, 'preferences', 'settings');
+                        await setDoc(docRef, { navItems }, { merge: true });
+                        console.log(`[Migración nav] Agregados ${missingItems.length} items:`, missingItems.map(i => i.label));
+                    }
+
                     setPreferences({
                         darkMode: data.darkMode ?? false,
-                        navItems: data.navItems ?? DEFAULT_NAV_ITEMS,
+                        navItems,
                     });
                 } else {
                     // Crear documento por defecto

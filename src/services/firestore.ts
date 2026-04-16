@@ -34,6 +34,7 @@ export const Features = {
     PERIOD: 'period',
     GOALS: 'goals',
     MOOD: 'mood',
+    TRAVEL: 'travel',
 };
 
 const getUserDoc = (userId: string) => doc(db, 'users', userId);

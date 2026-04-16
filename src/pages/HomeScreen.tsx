@@ -5,7 +5,7 @@ import { CycleDayModal } from '../components/CycleDayModal';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService, Features } from '../services/firestore';
 import { getPredictions, calculatePhase, getPredictiveAlert } from '../utils/cycleLogic';
-import type { GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt, WellnessData, Transaction } from '../types';
+import type { GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt, WellnessData, Transaction, TravelData, Trip } from '../types';
 
 const todayStr = () => {
     const now = new Date();
@@ -29,6 +29,7 @@ interface DashboardData {
     };
     predictiveAlert?: string | null;
     pendingReviewDate?: string | null;
+    upcomingTrips: Trip[];
 }
 
 const AFFIRMATIONS = [
@@ -48,7 +49,7 @@ export const HomeScreen: React.FC = () => {
         weekday: 'long', day: 'numeric', month: 'long'
     });
     const [dashboard, setDashboard] = useState<DashboardData>({
-        calories: 0, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0, waterToday: 0,
+        calories: 0, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0, waterToday: 0, upcomingTrips: [],
     });
     const { user } = useAuth();
     const displayName = user?.displayName ? user.displayName.split(' ')[0] : 'Nia';
@@ -75,15 +76,23 @@ export const HomeScreen: React.FC = () => {
             FirestoreService.getFeatureData(user.uid, Features.PERIOD),
             FirestoreService.getFeatureData(user.uid, Features.DEBTS),
             FirestoreService.getFeatureData(user.uid, Features.WELLNESS),
+            FirestoreService.getFeatureData(user.uid, Features.TRAVEL),
             FirestoreService.getTransactions(user.uid, null, 50)
-        ]).then(([_, gymRaw, foodRaw, goalsRaw, periodRaw, debtsRaw, wellnessRaw, txRes]) => {
+        ]).then(([_, gymRaw, foodRaw, goalsRaw, periodRaw, debtsRaw, wellnessRaw, travelRaw, txRes]) => {
             const gym = gymRaw as GymData | null;
             const food = foodRaw as FoodData | null;
             const goals = goalsRaw as GoalsData | null;
             const period = periodRaw as PeriodData | null;
             const debtsData = debtsRaw as DebtsData | null;
             const wellness = wellnessRaw as WellnessData | null;
+            const travel = travelRaw as TravelData | null;
             const txData = txRes as { transactions: Transaction[] };
+
+            // Upcoming trips (planned or active)
+            const upcomingTrips = (travel?.trips || [])
+                .filter(t => t.status === 'planned' || t.status === 'active')
+                .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+                .slice(0, 2); // Show max 2
 
             // Check for debts due today or overdue
             if (debtsData?.items) {
@@ -218,7 +227,7 @@ export const HomeScreen: React.FC = () => {
                 periodStatus = { isActive, isDayMissing, day, daysUntil };
             }
 
-            setDashboard({ calories, gymDone, gymGoal, gymWeeklyCompleted, todaySpent, goalsTotal, goalsDone, waterToday, periodStatus, predictiveAlert, pendingReviewDate });
+            setDashboard({ calories, gymDone, gymGoal, gymWeeklyCompleted, todaySpent, goalsTotal, goalsDone, waterToday, periodStatus, predictiveAlert, pendingReviewDate, upcomingTrips });
 
         });
     }, [user, refresh]);
@@ -538,6 +547,90 @@ export const HomeScreen: React.FC = () => {
                             </div>
                         </div>
                     </div>
+
+                    {/* Travel Card mejorado */}
+                    {dashboard.upcomingTrips.length > 0 && (() => {
+                        const nextTrip = dashboard.upcomingTrips[0];
+                        const days = Math.ceil((new Date(nextTrip.startDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        const isActive = nextTrip.status === 'active';
+                        const packed = nextTrip.packingList?.filter(i => i.packed).length || 0;
+                        const totalPack = nextTrip.packingList?.length || 0;
+                        const checklistDone = (nextTrip.preTripChecklist || []).filter(i => i.completed).length;
+                        const totalCheck = (nextTrip.preTripChecklist || []).length;
+                        const essentialPending = nextTrip.packingList?.filter(i => i.priority === 'essential' && !i.packed).length || 0;
+                        const overdueChecklist = (nextTrip.preTripChecklist || []).filter(i => {
+                            if (i.completed || !i.dueDate) return false;
+                            const today = new Date(); today.setHours(0,0,0,0);
+                            return new Date(i.dueDate + 'T00:00:00') < today;
+                        }).length;
+                        const daysLabel = isActive
+                            ? '¡En curso! 🌴'
+                            : days <= 0 ? '¡Hoy! 🎉' : days === 1 ? 'Mañana ✈️' : `En ${days} días`;
+
+                        return (
+                            <button
+                                onClick={() => navigate('/travel')}
+                                className="bg-gradient-to-br from-pink-50 to-rose-50 dark:from-[#3a2028] dark:to-[#2d1820] p-4 rounded-3xl shadow-sm border border-pink-100 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow group text-left col-span-2"
+                            >
+                                <div className="flex justify-between items-start w-full mb-2">
+                                    <div className="bg-pink-100 dark:bg-pink-900/30 p-2 rounded-full text-pink-500 group-hover:scale-110 transition-transform">
+                                        <span className="material-symbols-outlined text-lg">{isActive ? 'flight_takeoff' : 'flight'}</span>
+                                    </div>
+                                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${isActive ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-300' : 'bg-pink-50 dark:bg-pink-900/20 text-pink-400'}`}>
+                                        {daysLabel}
+                                    </span>
+                                </div>
+                                <div>
+                                    <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">{isActive ? '✨ Viaje activo' : 'Próximo viaje'}</p>
+                                    <p className="text-base font-bold text-pink-500 mt-0.5">{nextTrip.destination}</p>
+
+                                    {/* Mini progress bars */}
+                                    {!isActive && (totalCheck > 0 || totalPack > 0) && (
+                                        <div className="grid grid-cols-2 gap-2 mt-2">
+                                            {totalCheck > 0 && (
+                                                <div>
+                                                    <div className="flex justify-between text-[9px] text-slate-400">
+                                                        <span>Pre-viaje</span>
+                                                        <span>{checklistDone}/{totalCheck}</span>
+                                                    </div>
+                                                    <div className="h-1 bg-pink-100 dark:bg-pink-900/30 rounded-full overflow-hidden mt-0.5">
+                                                        <div className="h-full bg-blue-400 rounded-full transition-all" style={{ width: `${(checklistDone / totalCheck) * 100}%` }} />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {totalPack > 0 && (
+                                                <div>
+                                                    <div className="flex justify-between text-[9px] text-slate-400">
+                                                        <span>Equipaje</span>
+                                                        <span>{packed}/{totalPack}</span>
+                                                    </div>
+                                                    <div className="h-1 bg-pink-100 dark:bg-pink-900/30 rounded-full overflow-hidden mt-0.5">
+                                                        <div className="h-full bg-pink-400 rounded-full transition-all" style={{ width: `${(packed / totalPack) * 100}%` }} />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Alertas */}
+                                    {(essentialPending > 0 || overdueChecklist > 0) && !isActive && (
+                                        <div className="flex flex-wrap gap-1 mt-2">
+                                            {essentialPending > 0 && (
+                                                <span className="text-[9px] bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-300 px-1.5 py-0.5 rounded-full font-bold">
+                                                    ⚠️ {essentialPending} esencial{essentialPending > 1 ? 'es' : ''}
+                                                </span>
+                                            )}
+                                            {overdueChecklist > 0 && (
+                                                <span className="text-[9px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 px-1.5 py-0.5 rounded-full font-bold animate-pulse">
+                                                    🔔 {overdueChecklist} vencida{overdueChecklist > 1 ? 's' : ''}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </button>
+                        );
+                    })()}
                 </div>
             </section>
         </div>

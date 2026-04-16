@@ -11,6 +11,7 @@ import { WellnessScreen } from './pages/WellnessScreen';
 import { GoalsScreen } from './pages/GoalsScreen';
 import { DebtsScreen } from './pages/DebtsScreen';
 import { ProfileScreen } from './pages/ProfileScreen';
+import { TravelScreen } from './pages/TravelScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
@@ -39,6 +40,7 @@ function App() {
                 <Route path="/wellness" element={<ProtectedRoute><WellnessScreen /></ProtectedRoute>} />
                 <Route path="/goals" element={<ProtectedRoute><GoalsScreen /></ProtectedRoute>} />
                 <Route path="/debts" element={<ProtectedRoute><DebtsScreen /></ProtectedRoute>} />
+                <Route path="/travel" element={<ProtectedRoute><TravelScreen /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
               </Route>
               <Route path="*" element={

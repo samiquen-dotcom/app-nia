@@ -24,7 +24,7 @@ export const BottomNav: React.FC = () => {
         <div className="fixed bottom-0 left-0 w-full px-4 pb-6 pt-4 bg-gradient-to-t from-white via-white to-transparent dark:from-[#1a0d10] dark:via-[#1a0d10]/80 z-50 pointer-events-none">
 
             {showMore && (
-                <div className="pointer-events-auto absolute bottom-24 right-1/2 translate-x-1/2 sm:translate-x-0 sm:right-6 bg-white dark:bg-[#231218] p-3 rounded-2xl shadow-xl border border-slate-100 dark:border-[#5a2b35]/30 grid grid-cols-4 gap-2 animate-in slide-in-from-bottom-5">
+                <div className="pointer-events-auto absolute bottom-24 left-1/2 -translate-x-1/2 bg-white dark:bg-[#231218] p-3 rounded-2xl shadow-xl border border-slate-100 dark:border-[#5a2b35]/30 grid grid-cols-4 gap-2 animate-in slide-in-from-bottom-5">
                     {moreNavs.map((item) => (
                         <NavLink
                             key={item.path}
