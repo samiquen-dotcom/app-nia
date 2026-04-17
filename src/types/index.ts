@@ -269,6 +269,11 @@ export interface Trip {
     customPackingCategories?: string[];
     rating?: number;                        // 1-5 después del viaje
     transportToDestination?: 'plane' | 'car' | 'bus' | 'train' | 'boat' | 'other';
+    /**
+     * Tasas custom: 1 unidad de la moneda = X COP. Sobreescriben DEFAULT_RATES_TO_COP del helper.
+     * Permite al usuario ajustar al cambio real del día durante un viaje.
+     */
+    customRates?: Record<string, number>;
 }
 
 export interface TripDestination {

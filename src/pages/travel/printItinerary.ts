@@ -9,8 +9,11 @@ const escapeHTML = (s: string) =>
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 
-/** Genera un HTML imprimible y abre la ventana de impresión nativa. */
-export function printTripItinerary(trip: Trip) {
+/**
+ * Genera un HTML imprimible y abre la ventana de impresión nativa.
+ * @returns 'ok' si abrió el popup, 'blocked' si fue bloqueado por el navegador.
+ */
+export function printTripItinerary(trip: Trip): 'ok' | 'blocked' {
     const country = getCountryByCode(trip.countryCode);
     const baseCurrency = trip.baseCurrency || 'COP';
     const currencyMeta = getCurrencyMeta(baseCurrency);
@@ -152,11 +155,9 @@ ${trip.notes ? `<h2>📝 Notas</h2><p style="white-space:pre-wrap;">${escapeHTML
 </html>`;
 
     const w = window.open('', '_blank');
-    if (!w) {
-        alert('Permite popups para imprimir el itinerario');
-        return;
-    }
+    if (!w) return 'blocked';
     w.document.open();
     w.document.write(html);
     w.document.close();
+    return 'ok';
 }

@@ -10,10 +10,12 @@ import { ReservationsTab } from './ReservationsTab';
 import { JournalTab } from './JournalTab';
 import { TodayTab } from './TodayTab';
 import { ConfirmModal } from './ConfirmModal';
+import { TripTemplatesModal } from './TripTemplatesModal';
+import type { TripTemplate } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { FirestoreService, Features } from '../../services/firestore';
 import { getPredictions } from '../../utils/cycleLogic';
-import { printTripItinerary } from './printItinerary';
+import { shareTrip } from './shareTrip';
 
 type TabKey = 'today' | 'info' | 'reservations' | 'packing' | 'itinerary' | 'expenses' | 'checklist' | 'journal';
 
@@ -42,15 +44,21 @@ export const TripDetailModal: React.FC<{
     isSaving?: boolean;
     templates?: PackingTemplate[];
     onSaveTemplate?: (template: PackingTemplate) => void;
-}> = ({ trip, onClose, onUpdate, onDelete, onEdit, isSaving = false, templates = [], onSaveTemplate }) => {
+    tripTemplates?: TripTemplate[];
+    onSaveTripTemplate?: (template: TripTemplate) => void;
+    onDeleteTripTemplate?: (templateId: string) => void;
+}> = ({ trip, onClose, onUpdate, onDelete, onEdit, isSaving = false, templates = [], onSaveTemplate, tripTemplates = [], onSaveTripTemplate, onDeleteTripTemplate }) => {
     const { user } = useAuth();
     const isActive = trip.status === 'active';
     const TABS = useMemo(() => TABS_BASE.filter(t => !t.activeOnly || isActive), [isActive]);
     const [tab, setTab] = useState<TabKey>(isActive ? 'today' : 'info');
+    const [showTemplatesModal, setShowTemplatesModal] = useState(false);
     const [confirmDeleteTrip, setConfirmDeleteTrip] = useState(false);
     const [periodAlert, setPeriodAlert] = useState<PeriodAlert | null>(null);
     const [periodAlertDismissed, setPeriodAlertDismissed] = useState(false);
     const [showAddPeriodItems, setShowAddPeriodItems] = useState(false);
+    const [shareToast, setShareToast] = useState<string | null>(null);
+    const [showActionsMenu, setShowActionsMenu] = useState(false);
 
     const status = STATUS_CONFIG[trip.status];
 
@@ -66,9 +74,11 @@ export const TripDetailModal: React.FC<{
             const tripDays = tripDateList(trip);
             if (tripDays.length === 0) return;
 
-            // Para cada día del viaje, calcular si cae en una ventana menstrual
+            // Validar fechas antes de construir Date (evita NaN silenciosos)
             const tripStart = new Date(trip.startDate + 'T00:00:00');
             const cycleStart = new Date(period.cycleStartDate + 'T00:00:00');
+            if (isNaN(tripStart.getTime()) || isNaN(cycleStart.getTime())) return;
+            if (!Number.isFinite(cycleLen) || cycleLen < 1 || !Number.isFinite(periodLen) || periodLen < 1) return;
 
             // Encontrar ciclos relevantes (los próximos 6 ciclos cubren cualquier viaje razonable)
             const daysSinceStart = Math.floor((tripStart.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24));
@@ -113,8 +123,14 @@ export const TripDetailModal: React.FC<{
         setTab('packing');
     };
 
-    const handlePrint = () => {
-        printTripItinerary(trip);
+    const handleShare = async () => {
+        const result = await shareTrip(trip);
+        if (result === 'copied') setShareToast('Texto copiado al portapapeles');
+        else if (result === 'whatsapp') setShareToast('Abriendo WhatsApp…');
+        else if (result === 'error') setShareToast('No se pudo compartir');
+        if (result === 'copied' || result === 'whatsapp' || result === 'error') {
+            setTimeout(() => setShareToast(null), 2500);
+        }
     };
 
     const showPeriodBanner = periodAlert?.overlaps && !periodAlertDismissed;
@@ -127,35 +143,67 @@ export const TripDetailModal: React.FC<{
                 {/* Header */}
                 <div className="flex-shrink-0 bg-white dark:bg-[#1a0d10] px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-slate-100 dark:border-[#5a2b35]/30">
                     <div className="flex items-center justify-between mb-2 sm:mb-3">
-                        <div className="flex items-center gap-2">
-                            <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
-                                <span className="material-symbols-outlined text-xl">arrow_back</span>
-                            </button>
-                            <button
-                                onClick={onEdit}
-                                className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-pink-50 dark:hover:bg-pink-900/20 hover:text-pink-500 transition-colors"
-                            >
-                                <span className="material-symbols-outlined text-xl">edit</span>
-                            </button>
-                            <button
-                                onClick={handlePrint}
-                                className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-500 transition-colors"
-                                title="Imprimir / Exportar PDF"
-                            >
-                                <span className="material-symbols-outlined text-xl">print</span>
-                            </button>
-                        </div>
                         <button
-                            onClick={() => setConfirmDeleteTrip(true)}
-                            disabled={isSaving}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            onClick={onClose}
+                            className="flex items-center gap-1.5 h-9 pl-1.5 pr-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                         >
-                            {isSaving ? (
-                                <span className="material-symbols-outlined text-xl animate-spin">progress_activity</span>
-                            ) : (
-                                <span className="material-symbols-outlined text-xl">delete</span>
-                            )}
+                            <span className="material-symbols-outlined text-xl">arrow_back</span>
+                            <span className="text-sm font-semibold">Cerrar</span>
                         </button>
+
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowActionsMenu(v => !v)}
+                                disabled={isSaving}
+                                className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                title="Acciones"
+                            >
+                                {isSaving ? (
+                                    <span className="material-symbols-outlined text-xl animate-spin">progress_activity</span>
+                                ) : (
+                                    <span className="material-symbols-outlined text-xl">more_vert</span>
+                                )}
+                            </button>
+
+                            {showActionsMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-[65]" onClick={() => setShowActionsMenu(false)} />
+                                    <div className="absolute right-0 top-11 z-[66] w-56 bg-white dark:bg-[#2d1820] rounded-xl shadow-xl ring-1 ring-slate-200 dark:ring-[#5a2b35]/40 overflow-hidden">
+                                        <button
+                                            onClick={() => { setShowActionsMenu(false); onEdit(); }}
+                                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined text-lg text-pink-500">edit</span>
+                                            Editar viaje
+                                        </button>
+                                        <button
+                                            onClick={() => { setShowActionsMenu(false); void handleShare(); }}
+                                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined text-lg text-green-500">share</span>
+                                            Compartir
+                                        </button>
+                                        {onSaveTripTemplate && (
+                                            <button
+                                                onClick={() => { setShowActionsMenu(false); setShowTemplatesModal(true); }}
+                                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-lg text-purple-500">bookmark_add</span>
+                                                Guardar como template
+                                            </button>
+                                        )}
+                                        <div className="border-t border-slate-100 dark:border-[#5a2b35]/30" />
+                                        <button
+                                            onClick={() => { setShowActionsMenu(false); setConfirmDeleteTrip(true); }}
+                                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined text-lg">delete</span>
+                                            Eliminar viaje
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
                     <div className="flex items-start justify-between gap-2">
                         <h2 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 line-clamp-2 flex-1">{trip.destination}</h2>
@@ -254,6 +302,22 @@ export const TripDetailModal: React.FC<{
                 onConfirm={addPeriodItems}
                 onCancel={() => setShowAddPeriodItems(false)}
             />
+
+            {shareToast && (
+                <div className="fixed bottom-24 sm:bottom-8 left-1/2 -translate-x-1/2 z-[80] bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-800 text-xs font-semibold px-4 py-2 rounded-full shadow-lg">
+                    {shareToast}
+                </div>
+            )}
+
+            {showTemplatesModal && onSaveTripTemplate && (
+                <TripTemplatesModal
+                    userTemplates={tripTemplates}
+                    sourceTrip={trip}
+                    onSaveTemplate={onSaveTripTemplate}
+                    onDeleteTemplate={(id) => onDeleteTripTemplate?.(id)}
+                    onClose={() => setShowTemplatesModal(false)}
+                />
+            )}
         </div>
     );
 };

@@ -5,6 +5,7 @@ import { TripCard } from './travel/TripCard';
 import { TripFormModal } from './travel/TripFormModal';
 import { TripDetailModal } from './travel/TripDetailModal';
 import { TravelStatsDashboard } from './travel/TravelStatsDashboard';
+import { TripTemplatesModal } from './travel/TripTemplatesModal';
 import { TYPE_CONFIG, STATUS_CONFIG } from './travel/utils';
 
 type SortMode = 'date' | 'recent' | 'budget' | 'alphabetical';
@@ -20,6 +21,7 @@ export const TravelScreen: React.FC = () => {
     const [typeFilter, setTypeFilter] = useState<TripType | 'all'>('all');
     const [sortMode, setSortMode] = useState<SortMode>('date');
     const [showFilters, setShowFilters] = useState(false);
+    const [showTemplatesManager, setShowTemplatesManager] = useState(false);
 
     // Mantener selectedTrip sincronizado con data.trips para que las ediciones se reflejen
     useEffect(() => {
@@ -125,6 +127,13 @@ export const TravelScreen: React.FC = () => {
                     )}
                 </div>
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setShowTemplatesManager(true)}
+                        className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-500"
+                        title="Templates de viaje"
+                    >
+                        <span className="material-symbols-outlined text-xl">auto_awesome</span>
+                    </button>
                     {data.trips.length > 0 && (
                         <button
                             onClick={() => setShowStats(!showStats)}
@@ -292,6 +301,9 @@ export const TravelScreen: React.FC = () => {
                     }}
                     editTrip={editingTrip}
                     isSaving={saving}
+                    userTripTemplates={data.tripTemplates || []}
+                    onSaveUserTemplate={(t) => save({ tripTemplates: [...(data.tripTemplates || []), t] })}
+                    onDeleteUserTemplate={(id) => save({ tripTemplates: (data.tripTemplates || []).filter(t => t.id !== id) })}
                 />
             )}
 
@@ -319,6 +331,19 @@ export const TravelScreen: React.FC = () => {
                             packingTemplates: [...(data.packingTemplates || []), template]
                         });
                     }}
+                    tripTemplates={data.tripTemplates || []}
+                    onSaveTripTemplate={(t) => save({ tripTemplates: [...(data.tripTemplates || []), t] })}
+                    onDeleteTripTemplate={(id) => save({ tripTemplates: (data.tripTemplates || []).filter(t => t.id !== id) })}
+                />
+            )}
+
+            {/* Modal: Templates manager */}
+            {showTemplatesManager && (
+                <TripTemplatesModal
+                    userTemplates={data.tripTemplates || []}
+                    onSaveTemplate={(t) => save({ tripTemplates: [...(data.tripTemplates || []), t] })}
+                    onDeleteTemplate={(id) => save({ tripTemplates: (data.tripTemplates || []).filter(t => t.id !== id) })}
+                    onClose={() => setShowTemplatesManager(false)}
                 />
             )}
         </div>

@@ -47,11 +47,11 @@ export const ExpensesTab: React.FC<{
     const byCategory = useMemo(() => {
         const cats: Record<string, number> = {};
         trip.expenses.forEach(e => {
-            const inBase = e.amountInBase != null ? e.amountInBase : convertCurrency(e.amount, e.currency || baseCurrency, baseCurrency);
+            const inBase = e.amountInBase != null ? e.amountInBase : convertCurrency(e.amount, e.currency || baseCurrency, baseCurrency, trip.customRates);
             cats[e.category] = (cats[e.category] || 0) + inBase;
         });
         return cats;
-    }, [trip.expenses, baseCurrency]);
+    }, [trip.expenses, baseCurrency, trip.customRates]);
 
     // Split: deudas entre companions
     const splitBalances = useMemo(() => {
@@ -60,7 +60,7 @@ export const ExpensesTab: React.FC<{
 
         trip.expenses.forEach(e => {
             if (!e.splitWith || e.splitWith.length === 0) return;
-            const inBase = e.amountInBase != null ? e.amountInBase : convertCurrency(e.amount, e.currency || baseCurrency, baseCurrency);
+            const inBase = e.amountInBase != null ? e.amountInBase : convertCurrency(e.amount, e.currency || baseCurrency, baseCurrency, trip.customRates);
             const share = inBase / e.splitWith.length;
             const payer = e.paidBy || 'me';
             // El que pagó pone +monto, los demás del split deben share
@@ -74,9 +74,9 @@ export const ExpensesTab: React.FC<{
     }, [trip.expenses, companions, baseCurrency]);
 
     const saveExpense = (expense: TravelExpense) => {
-        // Calcula amountInBase si la moneda difiere
+        // Calcula amountInBase si la moneda difiere usando tasas custom del viaje
         const expenseWithBase: TravelExpense = expense.currency && expense.currency !== baseCurrency
-            ? { ...expense, amountInBase: convertCurrency(expense.amount, expense.currency, baseCurrency) }
+            ? { ...expense, amountInBase: convertCurrency(expense.amount, expense.currency, baseCurrency, trip.customRates) }
             : { ...expense, amountInBase: undefined };
 
         const exists = trip.expenses.some(e => e.id === expense.id);
@@ -97,7 +97,7 @@ export const ExpensesTab: React.FC<{
         if (!user) return;
         try {
             const account = financeAccounts.find(a => a.id === accountId);
-            const amountInBase = expense.amountInBase != null ? expense.amountInBase : convertCurrency(expense.amount, expense.currency || baseCurrency, baseCurrency);
+            const amountInBase = expense.amountInBase != null ? expense.amountInBase : convertCurrency(expense.amount, expense.currency || baseCurrency, baseCurrency, trip.customRates);
             const cat = EXPENSE_CATEGORIES.find(c => c.key === expense.category);
 
             const tx: Transaction = {
@@ -312,6 +312,7 @@ export const ExpensesTab: React.FC<{
                 <ExpenseForm
                     initial={editingExpense}
                     tripCurrency={baseCurrency}
+                    customRates={trip.customRates}
                     companions={companions}
                     onSave={saveExpense}
                     onCancel={() => { setShowAdd(false); setEditingExpense(null); }}
@@ -363,10 +364,11 @@ export const ExpensesTab: React.FC<{
 const ExpenseForm: React.FC<{
     initial: TravelExpense | null;
     tripCurrency: string;
+    customRates?: Record<string, number>;
     companions: Trip['companions'];
     onSave: (e: TravelExpense) => void;
     onCancel: () => void;
-}> = ({ initial, tripCurrency, companions, onSave, onCancel }) => {
+}> = ({ initial, tripCurrency, customRates, companions, onSave, onCancel }) => {
     const [e, setE] = useState<TravelExpense>(initial || {
         id: generateId(),
         category: 'comida',
@@ -440,7 +442,7 @@ const ExpenseForm: React.FC<{
 
             {e.currency && e.currency !== tripCurrency && (
                 <p className="text-[10px] text-slate-400 italic">
-                    ≈ {formatCurrency(convertCurrency(e.amount, e.currency, tripCurrency), tripCurrency)} (estimado)
+                    ≈ {formatCurrency(convertCurrency(e.amount, e.currency, tripCurrency, customRates), tripCurrency)} (estimado)
                 </p>
             )}
 

@@ -132,7 +132,7 @@ export const ReservationsTab: React.FC<{
         try {
             const account = financeAccounts.find(a => a.id === accountId);
             const amountInBase = (r.currency && r.currency !== baseCurrency)
-                ? convertCurrency(r.cost, r.currency, baseCurrency)
+                ? convertCurrency(r.cost, r.currency, baseCurrency, trip.customRates)
                 : r.cost;
             const cfg = RESERVATION_TYPE_CONFIG[r.type];
 
@@ -235,6 +235,7 @@ export const ReservationsTab: React.FC<{
                 <ReservationForm
                     initial={editing}
                     tripCurrency={trip.baseCurrency}
+                    hasItinerary={(trip.itinerary || []).length > 0}
                     onSave={saveReservation}
                     onCancel={() => { setEditing(null); setShowForm(false); }}
                 />
@@ -436,9 +437,10 @@ const ReservationCard: React.FC<{
 const ReservationForm: React.FC<{
     initial: Reservation | null;
     tripCurrency?: string;
+    hasItinerary?: boolean;
     onSave: (r: Reservation) => void;
     onCancel: () => void;
-}> = ({ initial, tripCurrency, onSave, onCancel }) => {
+}> = ({ initial, tripCurrency, hasItinerary = false, onSave, onCancel }) => {
     const [r, setR] = useState<Reservation>(initial || {
         id: generateId(),
         type: 'flight',
@@ -532,11 +534,15 @@ const ReservationForm: React.FC<{
                         <Input label={r.type === 'hotel' ? 'Check-out (fecha)' : 'Fecha fin'} value={r.endDate || ''} onChange={v => update('endDate', v)} type="date" />
                     </div>
 
-                    {r.startDate && (
+                    {r.startDate ? (
                         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-2 text-[10px] text-blue-600 dark:text-blue-300">
                             💡 Si el itinerario tiene este día, esta reserva aparecerá automáticamente como actividad
                         </div>
-                    )}
+                    ) : hasItinerary ? (
+                        <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 text-[10px] text-amber-700 dark:text-amber-300">
+                            ⚠️ Sin fecha de inicio, esta reserva no se vinculará al itinerario
+                        </div>
+                    ) : null}
 
                     <div className="grid grid-cols-3 gap-2">
                         <div className="col-span-2">

@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import type { Trip, TripType, TripColor, TripDestination } from '../../types';
+import type { Trip, TripType, TripColor, TripDestination, TripTemplate, ItineraryDay, PackingItem, PreTripChecklistItem } from '../../types';
 import { generateId, generateDefaultPacking, TYPE_CONFIG, TRIP_COLOR_CONFIG, tripDurationDays } from './utils';
 import { COUNTRIES, COMMON_CURRENCIES, getCountryByName } from './countries';
+import { TripTemplatesModal } from './TripTemplatesModal';
 
 const TRANSPORT_OPTIONS: Array<{ key: NonNullable<Trip['transportToDestination']>; label: string; icon: string }> = [
     { key: 'plane', label: 'Avión', icon: 'flight' },
@@ -17,7 +18,10 @@ export const TripFormModal: React.FC<{
     onSave: (trip: Trip) => void;
     editTrip?: Trip | null;
     isSaving?: boolean;
-}> = ({ onClose, onSave, editTrip, isSaving = false }) => {
+    userTripTemplates?: TripTemplate[];
+    onSaveUserTemplate?: (template: TripTemplate) => void;
+    onDeleteUserTemplate?: (templateId: string) => void;
+}> = ({ onClose, onSave, editTrip, isSaving = false, userTripTemplates = [], onSaveUserTemplate, onDeleteUserTemplate }) => {
     const [destination, setDestination] = useState(editTrip?.destination || '');
     const [countryCode, setCountryCode] = useState(editTrip?.countryCode || '');
     const [type, setType] = useState<TripType>(editTrip?.type || 'other');
@@ -33,6 +37,8 @@ export const TripFormModal: React.FC<{
     const [countrySearch, setCountrySearch] = useState('');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [showTemplates, setShowTemplates] = useState(false);
+    const [appliedTemplate, setAppliedTemplate] = useState<TripTemplate | null>(null);
 
     const filteredCountries = useMemo(() => {
         const q = countrySearch.toLowerCase().trim();
@@ -79,6 +85,28 @@ export const TripFormModal: React.FC<{
         return e;
     };
 
+    const applyTemplate = (template: TripTemplate) => {
+        setAppliedTemplate(template);
+        setType(template.type);
+        // Si todavía no hay fechas y el template tiene duración sugerida, no las llenamos automáticamente
+        // (mejor que el usuario decida sus fechas reales)
+    };
+
+    const buildItineraryFromTemplate = (template: TripTemplate, startISO: string): ItineraryDay[] | undefined => {
+        if (!template.itineraryActivities || template.itineraryActivities.length === 0) return undefined;
+        const start = new Date(startISO + 'T00:00:00');
+        return template.itineraryActivities.map(d => {
+            const dayDate = new Date(start);
+            dayDate.setDate(start.getDate() + d.dayNumber - 1);
+            return {
+                id: generateId(),
+                date: dayDate.toISOString().split('T')[0],
+                dayNumber: d.dayNumber,
+                activities: d.activities.map(a => ({ ...a, id: generateId() })),
+            };
+        });
+    };
+
     const handleSave = () => {
         const e = validate();
         setErrors(e);
@@ -109,6 +137,17 @@ export const TripFormModal: React.FC<{
                 ? COUNTRIES.find(c => c.code === autoCountry)?.currency
                 : undefined;
 
+            // Si hay template aplicado, usar sus datos en lugar del packing por defecto
+            const templatedPacking: PackingItem[] | null = appliedTemplate
+                ? appliedTemplate.packingItems.map(p => ({ ...p, id: generateId(), packed: false }))
+                : null;
+            const templatedChecklist: PreTripChecklistItem[] | undefined = appliedTemplate && appliedTemplate.checklistItems.length > 0
+                ? appliedTemplate.checklistItems.map(c => ({ ...c, id: generateId(), completed: false }))
+                : undefined;
+            const templatedItinerary = appliedTemplate
+                ? buildItineraryFromTemplate(appliedTemplate, startDate)
+                : undefined;
+
             const trip: Trip = {
                 id: generateId(),
                 destination: destination.trim(),
@@ -121,7 +160,9 @@ export const TripFormModal: React.FC<{
                 budget: parseFloat(budget) || 0,
                 baseCurrency,
                 notes: notes.trim(),
-                packingList: generateDefaultPacking(type, duration),
+                packingList: templatedPacking || generateDefaultPacking(type, duration),
+                preTripChecklist: templatedChecklist,
+                itinerary: templatedItinerary,
                 expenses: [],
                 createdAt: Date.now(),
                 destinations: destinations.length > 0 ? destinations : undefined,
@@ -180,6 +221,40 @@ export const TripFormModal: React.FC<{
 
                 {/* Form */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                    {/* Template applied banner / picker */}
+                    {!editTrip && (
+                        appliedTemplate ? (
+                            <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800/40 rounded-xl p-3 flex items-center justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold text-purple-600 dark:text-purple-300 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                                        Template aplicado: {appliedTemplate.name}
+                                    </p>
+                                    <p className="text-[10px] text-purple-500 dark:text-purple-400 mt-0.5">
+                                        Se cargarán {appliedTemplate.packingItems.length} items + {appliedTemplate.checklistItems.length} tareas
+                                        {appliedTemplate.itineraryActivities && ` + ${appliedTemplate.itineraryActivities.reduce((s, d) => s + d.activities.length, 0)} actividades`}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setAppliedTemplate(null)}
+                                    className="text-purple-400 hover:text-purple-600 p-1"
+                                    title="Quitar template"
+                                >
+                                    <span className="material-symbols-outlined text-base">close</span>
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setShowTemplates(true)}
+                                className="w-full bg-gradient-to-r from-purple-50 to-fuchsia-50 dark:from-purple-900/10 dark:to-fuchsia-900/10 border-2 border-dashed border-purple-200 dark:border-purple-800/40 rounded-xl py-2.5 text-xs text-purple-600 dark:text-purple-300 font-bold flex items-center justify-center gap-1 hover:bg-purple-100 dark:hover:bg-purple-900/20 transition-colors"
+                            >
+                                <span className="material-symbols-outlined text-base">auto_awesome</span>
+                                Empezar desde un template
+                            </button>
+                        )
+                    )}
+
                     {/* Destino + país */}
                     <div>
                         <label className="text-xs font-bold text-slate-600 dark:text-slate-300 mb-2 block">Destino *</label>
@@ -439,6 +514,18 @@ export const TripFormModal: React.FC<{
                         />
                     </div>
                 </div>
+
+                {/* Templates picker */}
+                {showTemplates && (
+                    <TripTemplatesModal
+                        userTemplates={userTripTemplates}
+                        mode="pick"
+                        onApplyTemplate={applyTemplate}
+                        onSaveTemplate={(t) => onSaveUserTemplate?.(t)}
+                        onDeleteTemplate={(id) => onDeleteUserTemplate?.(id)}
+                        onClose={() => setShowTemplates(false)}
+                    />
+                )}
 
                 {/* Footer */}
                 <div className="flex-shrink-0 bg-white dark:bg-[#1a0d10] px-6 pb-28 sm:pb-6 pt-2 border-t border-slate-100 dark:border-[#5a2b35]/30">

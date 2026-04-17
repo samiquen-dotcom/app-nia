@@ -127,7 +127,7 @@ export function totalExpensesInBase(trip: Trip): number {
     return trip.expenses.reduce((sum, e) => {
         if (e.amountInBase != null && (e.currency || base) !== base) return sum + e.amountInBase;
         if ((e.currency || base) === base) return sum + e.amount;
-        return sum + convertCurrency(e.amount, e.currency || base, base);
+        return sum + convertCurrency(e.amount, e.currency || base, base, trip.customRates);
     }, 0);
 }
 

@@ -86,7 +86,7 @@ export const TodayTab: React.FC<TodayTabProps> = ({ trip, onUpdate, onJumpToTab 
         return todayExpenses.reduce((sum, e) => {
             if (e.amountInBase != null) return sum + e.amountInBase;
             if ((e.currency || baseCurrency) === baseCurrency) return sum + e.amount;
-            return sum + convertCurrency(e.amount, e.currency || baseCurrency, baseCurrency);
+            return sum + convertCurrency(e.amount, e.currency || baseCurrency, baseCurrency, trip.customRates);
         }, 0);
     }, [todayExpenses, baseCurrency]);
 

@@ -22,10 +22,10 @@ export const TravelStatsDashboard: React.FC<{ trips: Trip[] }> = ({ trips }) => 
         const cancelledTrips = trips.filter(t => t.status === 'cancelled').length;
 
         // Total budget & expenses (en COP — moneda de referencia para sumar entre viajes con monedas distintas)
-        const totalBudget = trips.reduce((sum, t) => sum + convertCurrency(t.budget, t.baseCurrency || 'COP', 'COP'), 0);
+        const totalBudget = trips.reduce((sum, t) => sum + convertCurrency(t.budget, t.baseCurrency || 'COP', 'COP', t.customRates), 0);
         const totalExpenses = trips.reduce((sum, t) => {
             const tripTotal = totalExpensesInBase(t);
-            return sum + convertCurrency(tripTotal, t.baseCurrency || 'COP', 'COP');
+            return sum + convertCurrency(tripTotal, t.baseCurrency || 'COP', 'COP', t.customRates);
         }, 0);
         const remaining = totalBudget - totalExpenses;
 
@@ -77,8 +77,8 @@ export const TravelStatsDashboard: React.FC<{ trips: Trip[] }> = ({ trips }) => 
         trips.forEach(t => {
             const tripBase = t.baseCurrency || 'COP';
             t.expenses.forEach(e => {
-                const inBase = e.amountInBase != null ? e.amountInBase : convertCurrency(e.amount, e.currency || tripBase, tripBase);
-                const inCop = convertCurrency(inBase, tripBase, 'COP');
+                const inBase = e.amountInBase != null ? e.amountInBase : convertCurrency(e.amount, e.currency || tripBase, tripBase, t.customRates);
+                const inCop = convertCurrency(inBase, tripBase, 'COP', t.customRates);
                 expenseByCategory[e.category] = (expenseByCategory[e.category] || 0) + inCop;
             });
         });

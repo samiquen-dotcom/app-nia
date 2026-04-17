@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { Trip, TripStatus, Companion } from '../../types';
 import { STATUS_CONFIG, generateId, tripDurationDays, formatDate, totalPackedWeight, formatWeight, totalExpensesInBase, formatCurrency } from './utils';
-import { getCountryByCode } from './countries';
+import { getCountryByCode, getCurrencyMeta } from './countries';
+import { CurrencyRatesEditor } from './CurrencyRatesEditor';
 
 const COMPANION_COLORS = ['pink', 'blue', 'green', 'purple', 'orange', 'teal', 'indigo', 'rose'];
 
@@ -22,6 +23,7 @@ export const TripInfoTab: React.FC<{ trip: Trip; onUpdate: (trip: Trip) => void;
     const [newCompanionEmoji, setNewCompanionEmoji] = useState('👤');
     const [editingCompanion, setEditingCompanion] = useState<string | null>(null);
     const [showStatusPicker, setShowStatusPicker] = useState(false);
+    const [showRatesEditor, setShowRatesEditor] = useState(false);
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const startDate = new Date(trip.startDate + 'T00:00:00');
@@ -43,6 +45,22 @@ export const TripInfoTab: React.FC<{ trip: Trip; onUpdate: (trip: Trip) => void;
     const weight = totalPackedWeight(trip);
 
     const companions = trip.companions || [];
+    const baseCurrency = trip.baseCurrency || 'COP';
+
+    // ¿Hay multi-divisa? (gastos/reservas en moneda distinta a la base, o país con moneda distinta)
+    const foreignCurrencies = useMemo(() => {
+        const set = new Set<string>();
+        trip.expenses.forEach(e => {
+            if (e.currency && e.currency !== baseCurrency) set.add(e.currency);
+        });
+        (trip.reservations || []).forEach(r => {
+            if (r.currency && r.currency !== baseCurrency) set.add(r.currency);
+        });
+        if (country && country.currency !== baseCurrency) set.add(country.currency);
+        return Array.from(set);
+    }, [trip.expenses, trip.reservations, country, baseCurrency]);
+
+    const customRatesCount = Object.keys(trip.customRates || {}).length;
 
     // Cycle del status (no incluye cancelled — eso es manual desde picker)
     const cycleStatus = () => {
@@ -153,6 +171,33 @@ export const TripInfoTab: React.FC<{ trip: Trip; onUpdate: (trip: Trip) => void;
                     </div>
                 )}
             </div>
+
+            {/* Tasas de cambio */}
+            {(foreignCurrencies.length > 0 || customRatesCount > 0) && (
+                <button
+                    onClick={() => setShowRatesEditor(true)}
+                    className="w-full bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-900/10 dark:to-yellow-900/10 rounded-2xl p-4 border border-amber-100 dark:border-amber-900/20 text-left hover:shadow-md transition-shadow"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center">
+                            <span className="material-symbols-outlined">currency_exchange</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-amber-700 dark:text-amber-300">
+                                Tasas de cambio
+                                {customRatesCount > 0 && (
+                                    <span className="text-[10px] text-green-600 dark:text-green-400 ml-2">✓ Personalizadas</span>
+                                )}
+                            </p>
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                                Base: {baseCurrency} {getCurrencyMeta(baseCurrency).flag}
+                                {foreignCurrencies.length > 0 && ` · Otras: ${foreignCurrencies.map(c => `${getCurrencyMeta(c).flag} ${c}`).join(', ')}`}
+                            </p>
+                        </div>
+                        <span className="material-symbols-outlined text-amber-400 text-sm">tune</span>
+                    </div>
+                </button>
+            )}
 
             {/* Transporte */}
             {trip.transportToDestination && TRANSPORT_LABELS[trip.transportToDestination] && (
@@ -361,6 +406,27 @@ export const TripInfoTab: React.FC<{ trip: Trip; onUpdate: (trip: Trip) => void;
                     </button>
                 )}
             </div>
+
+            {/* Currency rates editor modal */}
+            {showRatesEditor && (
+                <CurrencyRatesEditor
+                    trip={trip}
+                    onSave={(customRates) => {
+                        // Recalcular amountInBase de todos los gastos con la nueva tasa
+                        const newExpenses = trip.expenses.map(e => {
+                            if (!e.currency || e.currency === baseCurrency) return { ...e, amountInBase: undefined };
+                            const rate = customRates[e.currency];
+                            const baseRate = customRates[baseCurrency];
+                            if (!rate || !baseRate) return e;
+                            // 1 e.currency = rate COP. Convertir a baseCurrency: amount * rate / baseRate
+                            return { ...e, amountInBase: (e.amount * rate) / baseRate };
+                        });
+                        onUpdate({ ...trip, customRates, expenses: newExpenses });
+                        setShowRatesEditor(false);
+                    }}
+                    onClose={() => setShowRatesEditor(false)}
+                />
+            )}
         </div>
     );
 };
