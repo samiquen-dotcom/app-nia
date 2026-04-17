@@ -3,7 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { useFeatureData } from '../hooks/useFeatureData';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService } from '../services/firestore';
-import type { FinanceData, FinanceAccount, Transaction, CustomCategory, TransferTransaction } from '../types';
+import type { FinanceData, FinanceAccount, FinanceAccountType, Transaction, CustomCategory, TransferTransaction } from '../types';
+
+// ─── Account types (patrimonio) ──────────────────────────────────────────────
+const ACCOUNT_TYPES: Array<{ id: FinanceAccountType; label: string; emoji: string }> = [
+    { id: 'cash', label: 'Efectivo', emoji: '💵' },
+    { id: 'checking', label: 'Débito', emoji: '💳' },
+    { id: 'savings', label: 'Ahorro', emoji: '🏦' },
+    { id: 'credit', label: 'Crédito', emoji: '💸' },
+    { id: 'other', label: 'Otra', emoji: '📁' },
+];
 
 // ─── Visual config for accounts ───────────────────────────────────────────────
 const ACCOUNT_META: Record<string, { gradient: string; textColor: string; badge: string; emoji: string }> = {
@@ -63,9 +72,7 @@ const todayStr = () => {
 const fmt = (n: number) => {
     const abs = Math.abs(n);
     const sign = n < 0 ? '-' : '';
-    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
-    if (abs >= 1_000) return `${sign}$${Math.round(abs / 1_000)}K`;
-    return `${sign}$${abs.toFixed(0)}`;
+    return `${sign}$${abs.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
 };
 
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -100,18 +107,12 @@ export const FinanceScreen: React.FC = () => {
         monthStats: {}
     });
 
+    // Solo inyectar defaults en la primera carga (cuando no hay cuentas).
+    // Si el usuario borró una cuenta default, respetamos su decisión.
     const accounts = useMemo(() => {
         const current = data.accounts || [];
         if (current.length === 0) return DEFAULT_ACCOUNTS;
-
-        // Merge missing defaults
-        const merged = [...current];
-        DEFAULT_ACCOUNTS.forEach(def => {
-            if (!merged.find(a => a.id === def.id)) {
-                merged.push(def);
-            }
-        });
-        return merged;
+        return current;
     }, [data.accounts]);
     const customCats = data.customCategories ?? [];
 
@@ -191,13 +192,36 @@ export const FinanceScreen: React.FC = () => {
     const [newAccountEmoji, setNewAccountEmoji] = useState('💳');
     const [newAccountBalance, setNewAccountBalance] = useState('');
     const [newAccountColor, setNewAccountColor] = useState('slate');
+    const [newAccountType, setNewAccountType] = useState<FinanceAccountType>('cash');
+    const [newAccountArchived, setNewAccountArchived] = useState(false);
+    const [editingAccountOldInitial, setEditingAccountOldInitial] = useState(0);
     const [isAddingAccount, setIsAddingAccount] = useState(false);
     const [isManagingAccounts, setIsManagingAccounts] = useState(false);
     const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+    const [showArchived, setShowArchived] = useState(false);
+    const [isRecalculating, setIsRecalculating] = useState(false);
+    const [filterAccountId, setFilterAccountId] = useState<string | null>(null);
 
     // ─── Computed ───────────────────────────────────────────────────────────────
-    // Using persisted balances from data.accounts
-    const total = accounts.reduce((s, a) => s + (a.balance ?? a.initialBalance), 0);
+    // Cuentas visibles (no archivadas) para UI y selectores.
+    const visibleAccounts = useMemo(() => accounts.filter(a => !a.archived), [accounts]);
+    const archivedAccounts = useMemo(() => accounts.filter(a => a.archived), [accounts]);
+
+    // Balance total: suma débitos/ahorro/efectivo/otras, resta créditos (deuda). Ignora archivadas.
+    const total = visibleAccounts.reduce((s, a) => {
+        const bal = a.balance ?? a.initialBalance ?? 0;
+        return a.type === 'credit' ? s - bal : s + bal;
+    }, 0);
+
+    // Lista de movimientos filtrada por cuenta (si hay filtro activo).
+    const filteredTxList = useMemo(() => {
+        if (!filterAccountId) return txList;
+        return txList.filter(t =>
+            t.accountId === filterAccountId ||
+            t.fromAccountId === filterAccountId ||
+            t.toAccountId === filterAccountId
+        );
+    }, [txList, filterAccountId]);
 
     const thisMonth = getCurrentMonth();
 
@@ -426,12 +450,26 @@ export const FinanceScreen: React.FC = () => {
     };
 
     // ── Add/Edit Account Functions ───────────────────────────────────────────────
+    const resetAccountForm = () => {
+        setNewAccountName('');
+        setNewAccountEmoji('💳');
+        setNewAccountBalance('');
+        setNewAccountColor('slate');
+        setNewAccountType('cash');
+        setNewAccountArchived(false);
+        setEditingAccountId(null);
+        setEditingAccountOldInitial(0);
+    };
+
     const openEditAccount = (acc: FinanceAccount) => {
         setEditingAccountId(acc.id);
         setNewAccountName(acc.name);
         setNewAccountEmoji(acc.emoji || '💳');
-        setNewAccountBalance(''); // No se edita el balance inicial aquí
+        setNewAccountBalance(String(acc.initialBalance ?? 0));
+        setEditingAccountOldInitial(acc.initialBalance ?? 0);
         setNewAccountColor(acc.color || 'slate');
+        setNewAccountType(acc.type ?? 'cash');
+        setNewAccountArchived(!!acc.archived);
         setShowAddAccount(true);
     };
 
@@ -441,15 +479,24 @@ export const FinanceScreen: React.FC = () => {
         setIsAddingAccount(true);
 
         try {
+            const parsedInitial = parseFloat(newAccountBalance) || 0;
+
             if (editingAccountId) {
-                // Modificar cuenta existente
+                // Modificar cuenta existente. Si cambia initialBalance, ajusta balance por el diff
+                // para que los movimientos ya aplicados se mantengan coherentes.
+                const diff = parsedInitial - editingAccountOldInitial;
                 const updatedAccounts = accounts.map(acc => {
                     if (acc.id === editingAccountId) {
+                        const currentBalance = acc.balance ?? acc.initialBalance ?? 0;
                         return {
                             ...acc,
                             name: newAccountName.trim(),
                             emoji: newAccountEmoji,
-                            color: newAccountColor
+                            color: newAccountColor,
+                            type: newAccountType,
+                            archived: newAccountArchived,
+                            initialBalance: parsedInitial,
+                            balance: currentBalance + diff,
                         };
                     }
                     return acc;
@@ -461,20 +508,18 @@ export const FinanceScreen: React.FC = () => {
                 const newAccount: FinanceAccount = {
                     id: `custom_${Date.now()}`,
                     name: newAccountName.trim(),
-                    initialBalance: parseFloat(newAccountBalance) || 0,
-                    balance: parseFloat(newAccountBalance) || 0,
+                    initialBalance: parsedInitial,
+                    balance: parsedInitial,
                     emoji: newAccountEmoji,
-                    color: newAccountColor
+                    color: newAccountColor,
+                    type: newAccountType,
+                    archived: newAccountArchived,
                 };
                 await save({ accounts: [...accounts, newAccount] });
                 alert(`✅ Cuenta "${newAccount.name}" agregada exitosamente`);
             }
             setShowAddAccount(false);
-            setNewAccountName('');
-            setNewAccountEmoji('💳');
-            setNewAccountBalance('');
-            setNewAccountColor('slate');
-            setEditingAccountId(null);
+            resetAccountForm();
         } catch (error) {
             alert('❌ Error al guardar la cuenta. Intentá de nuevo.');
             console.error(error);
@@ -483,10 +528,39 @@ export const FinanceScreen: React.FC = () => {
         }
     };
 
-    const deleteCustomAccount = async (accountId: string) => {
-        if (confirm('¿Eliminar esta cuenta? Se eliminarán también los movimientos asociados.')) {
-            await save({ accounts: accounts.filter(a => a.id !== accountId) });
-            alert('✅ Cuenta eliminada');
+    const deleteAccount = async (accountId: string) => {
+        if (!user) return;
+        if (!confirm('¿Eliminar esta cuenta? Se eliminarán también TODOS los movimientos y transferencias asociadas a ella.')) return;
+        try {
+            const res = await FirestoreService.deleteAccountCascade(user.uid, accountId);
+            const updated = await FirestoreService.getFeatureData(user.uid, 'finance');
+            if (updated) setData(updated as FinanceData);
+            // Refrescar lista de movimientos
+            const txRes = await FirestoreService.getTransactions(user.uid, null, 10);
+            setTxList(txRes.transactions);
+            setLastDoc(txRes.lastDoc);
+            setHasMore(txRes.transactions.length === 10);
+            alert(`✅ Cuenta eliminada (${res.deletedCount} movimientos borrados)`);
+        } catch (e) {
+            console.error(e);
+            alert('❌ Error al eliminar la cuenta. Intentá de nuevo.');
+        }
+    };
+
+    const recalcBalances = async () => {
+        if (!user || isRecalculating) return;
+        if (!confirm('Esto recalcula los saldos de todas las cuentas a partir de su saldo inicial y todos los movimientos. ¿Continuar?')) return;
+        setIsRecalculating(true);
+        try {
+            await FirestoreService.recalculateFinances(user.uid);
+            const updated = await FirestoreService.getFeatureData(user.uid, 'finance');
+            if (updated) setData(updated as FinanceData);
+            alert('✅ Saldos recalculados');
+        } catch (e) {
+            console.error(e);
+            alert('❌ Error al recalcular.');
+        } finally {
+            setIsRecalculating(false);
         }
     };
 
@@ -568,10 +642,9 @@ export const FinanceScreen: React.FC = () => {
 
             {/* ── Accounts Horizontal Scroll ──────────────────────────────────── */}
             <div className="mb-5">
-                <div className="px-6 mb-2 flex items-center justify-between">
+                <div className="px-6 mb-2 flex items-center justify-between flex-wrap gap-2">
                     <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Mis cuentas</h3>
-                    <span className="text-[10px] text-slate-400 hidden sm:inline">saldo actual</span>
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 flex-wrap items-center">
                         <button
                             onClick={() => setIsManagingAccounts(!isManagingAccounts)}
                             className={`text-[10px] font-bold flex items-center gap-1 transition-colors ${isManagingAccounts ? 'text-rose-500 hover:text-rose-600' : 'text-slate-400 hover:text-slate-500'}`}
@@ -579,13 +652,31 @@ export const FinanceScreen: React.FC = () => {
                             <span className="material-symbols-outlined text-xs">{isManagingAccounts ? 'close' : 'settings'}</span>
                             {isManagingAccounts ? 'Listo' : 'Administrar'}
                         </button>
+                        {isManagingAccounts && (
+                            <>
+                                <button
+                                    onClick={recalcBalances}
+                                    disabled={isRecalculating}
+                                    className="text-[10px] text-violet-500 font-bold flex items-center gap-1 hover:text-violet-600 disabled:opacity-50"
+                                    title="Recalcular saldos desde los movimientos"
+                                >
+                                    <span className={`material-symbols-outlined text-xs ${isRecalculating ? 'animate-spin' : ''}`}>{isRecalculating ? 'progress_activity' : 'sync'}</span>
+                                    {isRecalculating ? 'Recalculando...' : 'Recalcular'}
+                                </button>
+                                {archivedAccounts.length > 0 && (
+                                    <button
+                                        onClick={() => setShowArchived(!showArchived)}
+                                        className="text-[10px] text-slate-500 font-bold flex items-center gap-1 hover:text-slate-600"
+                                    >
+                                        <span className="material-symbols-outlined text-xs">{showArchived ? 'visibility_off' : 'archive'}</span>
+                                        {showArchived ? 'Ocultar archivadas' : `Ver archivadas (${archivedAccounts.length})`}
+                                    </button>
+                                )}
+                            </>
+                        )}
                         <button
                             onClick={() => {
-                                setEditingAccountId(null);
-                                setNewAccountName('');
-                                setNewAccountEmoji('💳');
-                                setNewAccountBalance('');
-                                setNewAccountColor('slate');
+                                resetAccountForm();
                                 setShowAddAccount(true);
                             }}
                             className="text-[10px] text-emerald-500 font-bold flex items-center gap-1 hover:text-emerald-600"
@@ -596,7 +687,7 @@ export const FinanceScreen: React.FC = () => {
                     </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 px-6 sm:grid-cols-3 md:grid-cols-5">
-                    {accounts.map(acc => {
+                    {[...visibleAccounts, ...(showArchived ? archivedAccounts : [])].map(acc => {
                         const isCustom = acc.id.startsWith('custom_');
                         let meta = ACCOUNT_META[acc.id] || { gradient: 'from-slate-200 to-gray-300', textColor: 'text-gray-900', badge: 'bg-white/50 text-gray-900', emoji: '💳' };
                         if (isCustom) {
@@ -607,17 +698,28 @@ export const FinanceScreen: React.FC = () => {
                                 badge: colorObj.badge,
                                 emoji: acc.emoji || '💳'
                             };
+                        } else if (acc.emoji) {
+                            meta = { ...meta, emoji: acc.emoji };
                         }
 
+                        const typeMeta = ACCOUNT_TYPES.find(t => t.id === (acc.type ?? 'cash'));
+                        const isCredit = acc.type === 'credit';
+                        const balance = acc.balance ?? acc.initialBalance ?? 0;
+
+                        const isFiltered = filterAccountId === acc.id;
                         return (
                             <div
                                 key={acc.id}
-                                className={`bg-gradient-to-br ${meta.gradient} rounded-2xl p-4 shadow-lg transition-all hover:scale-105 relative ${isManagingAccounts && isCustom ? 'animate-pulse ring-2 ring-rose-400' : ''}`}
+                                onClick={() => {
+                                    if (isManagingAccounts) return;
+                                    setFilterAccountId(prev => prev === acc.id ? null : acc.id);
+                                }}
+                                className={`bg-gradient-to-br ${meta.gradient} rounded-2xl p-4 shadow-lg transition-all hover:scale-105 relative ${isManagingAccounts ? 'animate-pulse ring-2 ring-rose-400' : 'cursor-pointer'} ${acc.archived ? 'opacity-60' : ''} ${isFiltered ? 'ring-4 ring-violet-500 scale-105' : ''}`}
                             >
-                                {isManagingAccounts && isCustom && (
+                                {isManagingAccounts && (
                                     <>
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); deleteCustomAccount(acc.id); }}
+                                            onClick={(e) => { e.stopPropagation(); deleteAccount(acc.id); }}
                                             className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform z-10"
                                             title="Eliminar cuenta"
                                         >
@@ -634,9 +736,19 @@ export const FinanceScreen: React.FC = () => {
                                 )}
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xl">{meta.emoji}</span>
+                                    {typeMeta && (
+                                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${meta.badge}`} title={typeMeta.label}>
+                                            {typeMeta.emoji} {typeMeta.label}
+                                        </span>
+                                    )}
                                 </div>
-                                <p className={`text-xs font-bold ${meta.textColor} opacity-80 mb-0.5`}>{acc.name}</p>
-                                <p className={`text-lg font-extrabold ${meta.textColor} leading-tight truncate`}>{fmt(acc.balance ?? acc.initialBalance)}</p>
+                                <p className={`text-xs font-bold ${meta.textColor} opacity-80 mb-0.5 flex items-center gap-1`}>
+                                    {acc.name}
+                                    {acc.archived && <span className="text-[8px] opacity-70">(archivada)</span>}
+                                </p>
+                                <p className={`text-lg font-extrabold ${meta.textColor} leading-tight truncate`}>
+                                    {isCredit && balance > 0 ? '-' : ''}{fmt(balance)}
+                                </p>
                             </div>
                         );
                     })}
@@ -835,14 +947,32 @@ export const FinanceScreen: React.FC = () => {
 
             {/* ── Transactions List ───────────────────────────────────────────── */}
             <div className="px-6 mb-10">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h3 className="font-bold text-slate-700 dark:text-slate-200">Movimientos</h3>
+                    {filterAccountId && (
+                        <button
+                            onClick={() => setFilterAccountId(null)}
+                            className="flex items-center gap-1.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-200 px-3 py-1 rounded-full text-xs font-bold hover:bg-violet-200 dark:hover:bg-violet-900/50 transition-colors"
+                        >
+                            {getAccountMeta(filterAccountId)?.emoji}
+                            <span>{accounts.find(a => a.id === filterAccountId)?.name ?? 'Cuenta'}</span>
+                            <span className="material-symbols-outlined text-sm">close</span>
+                        </button>
+                    )}
                 </div>
 
-                {txList.length === 0 ? (
+                {filteredTxList.length === 0 ? (
                     <div className="text-center py-10 text-slate-400">
                         {loadingTx ? (
                             <span className="animate-pulse">Cargando movimientos...</span>
+                        ) : filterAccountId ? (
+                            <>
+                                <span className="text-4xl block mb-2">🔍</span>
+                                <p className="text-sm">Sin movimientos de esta cuenta.</p>
+                                <button onClick={() => setFilterAccountId(null)} className="mt-2 text-xs font-bold text-violet-500 hover:text-violet-600">
+                                    Quitar filtro
+                                </button>
+                            </>
                         ) : (
                             <>
                                 <span className="text-4xl block mb-2">💸</span>
@@ -852,7 +982,7 @@ export const FinanceScreen: React.FC = () => {
                     </div>
                 ) : (
                     <div className="space-y-2">
-                        {txList.map(t => {
+                        {filteredTxList.map(t => {
                             const isTransfer = t.type === 'transfer';
                             const fromAccMeta = t.fromAccountId ? getAccountMeta(t.fromAccountId) : null;
                             const toAccMeta = t.toAccountId ? getAccountMeta(t.toAccountId) : null;
@@ -999,7 +1129,7 @@ export const FinanceScreen: React.FC = () => {
                                     {txType === 'expense' ? '¿De dónde sale?' : '¿A qué cuenta entra?'}
                                 </label>
                                 <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
-                                    {accounts.map(acc => {
+                                    {visibleAccounts.map(acc => {
                                         const meta = getAccountMeta(acc.id);
                                         const selected = txAccount === acc.id;
                                         return (
@@ -1128,7 +1258,7 @@ export const FinanceScreen: React.FC = () => {
                                     📤 Cuenta de origen
                                 </label>
                                 <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
-                                    {accounts.map(acc => {
+                                    {visibleAccounts.map(acc => {
                                         const meta = getAccountMeta(acc.id);
                                         const selected = trFromAccount === acc.id;
                                         const balance = acc.balance ?? acc.initialBalance ?? 0;
@@ -1159,7 +1289,7 @@ export const FinanceScreen: React.FC = () => {
                                     📥 Cuenta de destino
                                 </label>
                                 <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
-                                    {accounts.map(acc => {
+                                    {visibleAccounts.map(acc => {
                                         const meta = getAccountMeta(acc.id);
                                         const selected = trToAccount === acc.id;
                                         const balance = acc.balance ?? acc.initialBalance ?? 0;
@@ -1265,7 +1395,7 @@ export const FinanceScreen: React.FC = () => {
             {/* ── Add Account Modal ───────────────────────────────────────────── */}
             {showAddAccount && (
                 <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-6" onClick={() => setShowAddAccount(false)}>
-                    <div className="bg-white dark:bg-[#2d1820] rounded-3xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white dark:bg-[#2d1820] rounded-3xl p-6 w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
                         <h2 className="font-extrabold text-slate-800 dark:text-slate-100 text-lg mb-4 text-center">{editingAccountId ? 'Editar cuenta 💳' : 'Nueva cuenta 💳'}</h2>
 
                         <div className="space-y-4 mb-6">
@@ -1280,19 +1410,59 @@ export const FinanceScreen: React.FC = () => {
                                 />
                             </div>
 
-                            {!editingAccountId && (
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">
+                                    Saldo inicial
+                                    {editingAccountId && <span className="text-[9px] font-normal text-slate-400 normal-case ml-1">(ajusta el saldo actual automáticamente)</span>}
+                                </label>
+                                <div className="flex items-center gap-2 bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/40 rounded-2xl px-4 py-3">
+                                    <span className="text-slate-400 font-bold">$</span>
+                                    <input
+                                        type="number"
+                                        value={newAccountBalance}
+                                        onChange={e => setNewAccountBalance(e.target.value)}
+                                        placeholder="0"
+                                        className="flex-1 bg-transparent focus:outline-none font-bold text-slate-800 dark:text-slate-100"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Tipo de cuenta</label>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                    {ACCOUNT_TYPES.map(t => (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => setNewAccountType(t.id)}
+                                            className={`flex flex-col items-center gap-0.5 py-2 rounded-xl border-2 transition-all text-[10px] font-bold ${newAccountType === t.id
+                                                ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 scale-105'
+                                                : 'border-slate-200 dark:border-[#5a2b35]/40 text-slate-500 dark:text-slate-400 hover:border-emerald-300'
+                                                }`}
+                                        >
+                                            <span className="text-base">{t.emoji}</span>
+                                            <span>{t.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                {newAccountType === 'credit' && (
+                                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 font-medium">
+                                        💡 El saldo de una cuenta de crédito se resta del balance total (representa deuda).
+                                    </p>
+                                )}
+                            </div>
+
+                            {editingAccountId && (
                                 <div>
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">Saldo inicial</label>
-                                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-[#1a0d10] border border-slate-200 dark:border-[#5a2b35]/40 rounded-2xl px-4 py-3">
-                                        <span className="text-slate-400 font-bold">$</span>
+                                    <label className="flex items-center gap-2 cursor-pointer">
                                         <input
-                                            type="number"
-                                            value={newAccountBalance}
-                                            onChange={e => setNewAccountBalance(e.target.value)}
-                                            placeholder="0"
-                                            className="flex-1 bg-transparent focus:outline-none font-bold text-slate-800 dark:text-slate-100"
+                                            type="checkbox"
+                                            checked={newAccountArchived}
+                                            onChange={e => setNewAccountArchived(e.target.checked)}
+                                            className="w-4 h-4 accent-emerald-500"
                                         />
-                                    </div>
+                                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Archivar cuenta</span>
+                                    </label>
+                                    <p className="text-[10px] text-slate-400 mt-1 ml-6">Las cuentas archivadas no aparecen en los selectores ni en el balance total, pero se conservan sus movimientos.</p>
                                 </div>
                             )}
 

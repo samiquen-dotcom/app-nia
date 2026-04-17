@@ -1,3 +1,5 @@
+export type FinanceAccountType = 'cash' | 'savings' | 'checking' | 'credit' | 'other';
+
 export interface FinanceAccount {
     id: string;
     name: string;
@@ -5,6 +7,8 @@ export interface FinanceAccount {
     initialBalance: number;
     color?: string;
     emoji?: string;
+    type?: FinanceAccountType;
+    archived?: boolean;
 }
 
 export interface CustomCategory {

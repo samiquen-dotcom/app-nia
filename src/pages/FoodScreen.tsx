@@ -73,7 +73,15 @@ export const FoodScreen: React.FC = () => {
     // Estado para editar item
     const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
     const [editingItem, setEditingItem] = useState<{ item: FoodItem } | null>(null);
-    const [editForm, setEditForm] = useState({ name: '', calories: '', protein: '', carbs: '', fats: '' });
+    type IngredientDraft = { name: string; calories: string };
+    const [editForm, setEditForm] = useState<{
+        name: string;
+        calories: string;
+        protein: string;
+        carbs: string;
+        fats: string;
+        ingredients: IngredientDraft[];
+    }>({ name: '', calories: '', protein: '', carbs: '', fats: '', ingredients: [] });
 
     // Estado para mover comida a otro día
     const [movingItem, setMovingItem] = useState<{ item: FoodItem } | null>(null);
@@ -299,8 +307,33 @@ export const FoodScreen: React.FC = () => {
             calories: String(item.calories),
             protein: String(item.macros?.protein || ''),
             carbs: String(item.macros?.carbs || ''),
-            fats: String(item.macros?.fats || '')
+            fats: String(item.macros?.fats || ''),
+            ingredients: (item.ingredients ?? []).map(i => ({
+                name: i.name,
+                calories: String(i.calories),
+            })),
         });
+    };
+
+    const addIngredient = () => {
+        setEditForm(prev => ({
+            ...prev,
+            ingredients: [...prev.ingredients, { name: '', calories: '' }],
+        }));
+    };
+
+    const updateIngredient = (idx: number, field: 'name' | 'calories', value: string) => {
+        setEditForm(prev => ({
+            ...prev,
+            ingredients: prev.ingredients.map((ing, i) => i === idx ? { ...ing, [field]: value } : ing),
+        }));
+    };
+
+    const removeIngredient = (idx: number) => {
+        setEditForm(prev => ({
+            ...prev,
+            ingredients: prev.ingredients.filter((_, i) => i !== idx),
+        }));
     };
 
     // ─── Mover comida a otro día ───────────────────────────────────────────────
@@ -357,12 +390,18 @@ export const FoodScreen: React.FC = () => {
         const fats = parseInt(editForm.fats) || 0;
         const hasMacros = protein > 0 || carbs > 0 || fats > 0;
 
+        // Ingredientes: conservar solo los que tienen nombre no vacío, kcal numéricas >= 0
+        const cleanIngredients = editForm.ingredients
+            .map(i => ({ name: i.name.trim(), calories: parseInt(i.calories) || 0 }))
+            .filter(i => i.name.length > 0);
+
         const updatedItems = currentItems.map(item => {
             if (item.id === editingItem.item.id) {
                 return {
                     ...item,
                     name: editForm.name.trim(),
                     calories: cal,
+                    ingredients: cleanIngredients.length > 0 ? cleanIngredients : undefined,
                     ...(hasMacros ? {
                         macros: { protein, carbs, fats },
                         portion: item.portion || 'Porción editada',
@@ -378,6 +417,14 @@ export const FoodScreen: React.FC = () => {
 
         setEditingItem(null);
     };
+
+    // Coherencia: suma de kcal de ingredientes vs calorías totales editadas
+    const ingredientsSum = editForm.ingredients.reduce((s, i) => s + (parseInt(i.calories) || 0), 0);
+    const editedTotal = parseInt(editForm.calories) || 0;
+    const ingredientsMismatch =
+        editForm.ingredients.length > 0 &&
+        editedTotal > 0 &&
+        Math.abs(ingredientsSum - editedTotal) > editedTotal * 0.15;
 
     // ─── UI: Loading ───────────────────────────────────────────────────────────
     if (loading) {
@@ -1027,7 +1074,7 @@ export const FoodScreen: React.FC = () => {
             {/* ── Modal de Edición ───────────────────────────────────────────── */}
             {editingItem && (
                 <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-[#1a0d10] w-full max-w-sm rounded-3xl p-6 shadow-2xl">
+                    <div className="bg-white dark:bg-[#1a0d10] w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-3xl p-6 shadow-2xl">
                         <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 mb-4 text-center">Editar {editingItem.item.name}</h3>
 
                         <div className="space-y-3 mb-6">
@@ -1083,6 +1130,64 @@ export const FoodScreen: React.FC = () => {
                                         onChange={e => setEditForm(prev => ({ ...prev, fats: e.target.value }))}
                                     />
                                 </div>
+                            </div>
+
+                            {/* Ingredientes editables */}
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingredientes</label>
+                                    <button
+                                        onClick={addIngredient}
+                                        type="button"
+                                        className="text-xs font-bold text-emerald-500 hover:text-emerald-600 flex items-center gap-1"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">add_circle</span>
+                                        Añadir
+                                    </button>
+                                </div>
+
+                                {editForm.ingredients.length === 0 ? (
+                                    <p className="text-xs text-slate-400 italic py-2">Sin ingredientes. Añadí alguno si querés detallar.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {editForm.ingredients.map((ing, idx) => (
+                                            <div key={idx} className="flex gap-1.5 items-center">
+                                                <input
+                                                    className="flex-1 min-w-0 rounded-xl border border-slate-200 dark:border-[#5a2b35]/40 dark:bg-[#2d1820] dark:text-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400 transition-colors"
+                                                    type="text"
+                                                    placeholder="Nombre"
+                                                    value={ing.name}
+                                                    onChange={e => updateIngredient(idx, 'name', e.target.value)}
+                                                />
+                                                <input
+                                                    className="w-20 rounded-xl border border-slate-200 dark:border-[#5a2b35]/40 dark:bg-[#2d1820] dark:text-slate-200 px-2 py-2 text-sm focus:outline-none focus:border-emerald-400 transition-colors"
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="kcal"
+                                                    value={ing.calories}
+                                                    onChange={e => updateIngredient(idx, 'calories', e.target.value)}
+                                                />
+                                                <button
+                                                    onClick={() => removeIngredient(idx)}
+                                                    type="button"
+                                                    className="w-8 h-8 flex-shrink-0 rounded-full text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 flex items-center justify-center"
+                                                    aria-label="Eliminar ingrediente"
+                                                >
+                                                    <span className="material-symbols-outlined text-base">close</span>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Aviso de coherencia */}
+                                {ingredientsMismatch && (
+                                    <div className="mt-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-2">
+                                        <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-snug">
+                                            ⚠️ Los ingredientes suman <b>{ingredientsSum} kcal</b> pero el total es <b>{editedTotal} kcal</b>. Ajustalos para que cuadren.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

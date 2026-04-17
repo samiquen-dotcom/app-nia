@@ -403,24 +403,43 @@ export const FirestoreService = {
     },
 
     // Recalcular todo desde cero (Fix de consistencia)
+    // Preserva metadata de cuentas (nombre, emoji, color, tipo, archived) y parte de initialBalance.
+    // Procesa income, expense y transfers.
     recalculateFinances: async (userId: string) => {
         try {
-            // 1. Resetear estado local
-            // Usamos DEFAULT_ACCOUNTS para reiniciar balances a 0 pero mantenemos los IDs si hubiera nuevos
-            // Para simplificar, reseteamos a los defaults puros con balance 0
-            const accounts = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+            const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);
+            const financeSnap = await getDoc(financeRef);
+            const financeData = financeSnap.exists() ? financeSnap.data() : { accounts: [] };
+
+            // 1. Partir de las cuentas existentes (preserva metadata), balance = initialBalance
+            const existingAccounts: FinanceAccount[] = (financeData.accounts && financeData.accounts.length > 0)
+                ? financeData.accounts
+                : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+
+            const accounts: FinanceAccount[] = existingAccounts.map(a => ({
+                ...a,
+                balance: a.initialBalance ?? 0,
+            }));
             const monthStats: Record<string, MonthStats> = {};
 
-            // 2. Traer TODAS las transacciones
+            // 2. Traer TODAS las transacciones (incluye transfers)
             const txRef = collection(db, `users/${userId}/features/${Features.FINANCE}/transactions`);
             const snap = await getDocs(txRef);
 
             // 3. Re-procesar una por una
-            snap.forEach(doc => {
-                const tx = doc.data() as Trade;
+            snap.forEach(d => {
+                const tx = d.data() as Trade;
+
+                if (tx.type === 'transfer') {
+                    const fromIdx = accounts.findIndex(a => a.id === tx.fromAccountId);
+                    if (fromIdx >= 0) accounts[fromIdx].balance -= tx.amount;
+                    const toIdx = accounts.findIndex(a => a.id === tx.toAccountId);
+                    if (toIdx >= 0) accounts[toIdx].balance += tx.amount;
+                    return;
+                }
 
                 // Balance
-                const accIndex = accounts.findIndex((a: any) => a.id === tx.accountId);
+                const accIndex = accounts.findIndex(a => a.id === tx.accountId);
                 if (accIndex >= 0) {
                     const acc = accounts[accIndex];
                     if (tx.type === 'income') acc.balance += tx.amount;
@@ -450,7 +469,6 @@ export const FirestoreService = {
             });
 
             // 4. Guardar corrección
-            const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);
             await setDoc(financeRef, {
                 accounts,
                 monthStats
@@ -460,6 +478,49 @@ export const FirestoreService = {
 
         } catch (e) {
             console.error("Recalculate failed:", e);
+            throw e;
+        }
+    },
+
+    // Eliminar cuenta y todos sus movimientos (txs donde accountId, fromAccountId o toAccountId === accountId).
+    // Luego recalcula monthStats desde las txs restantes para mantener consistencia.
+    deleteAccountCascade: async (userId: string, accountId: string) => {
+        const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);
+        const txCollectionRef = collection(db, `users/${userId}/features/${Features.FINANCE}/transactions`);
+
+        try {
+            // 1. Leer todas las txs para identificar las que involucran la cuenta
+            const snap = await getDocs(txCollectionRef);
+            const toDelete: string[] = [];
+            snap.forEach(d => {
+                const tx = d.data() as Trade;
+                if (tx.accountId === accountId || tx.fromAccountId === accountId || tx.toAccountId === accountId) {
+                    toDelete.push(d.id);
+                }
+            });
+
+            // 2. Borrar en batch (límite 450 por batch)
+            for (let i = 0; i < toDelete.length; i += 450) {
+                const batch = writeBatch(db);
+                toDelete.slice(i, i + 450).forEach(id => {
+                    batch.delete(doc(txCollectionRef, id));
+                });
+                await batch.commit();
+            }
+
+            // 3. Quitar la cuenta del array accounts
+            const financeSnap = await getDoc(financeRef);
+            const financeData = financeSnap.exists() ? financeSnap.data() : { accounts: [] };
+            const remainingAccounts: FinanceAccount[] = (financeData.accounts || [])
+                .filter((a: FinanceAccount) => a.id !== accountId);
+            await setDoc(financeRef, { accounts: remainingAccounts }, { merge: true });
+
+            // 4. Recalcular balances y monthStats desde cero sobre las txs restantes
+            await FirestoreService.recalculateFinances(userId);
+
+            return { deletedCount: toDelete.length };
+        } catch (e) {
+            console.error("Error deleting account cascade:", e);
             throw e;
         }
     },
