@@ -315,25 +315,29 @@ export const FoodScreen: React.FC = () => {
         });
     };
 
+    // Recalcula el total de calorías a partir de la suma de ingredientes.
+    const sumIngredients = (ings: IngredientDraft[]) =>
+        String(ings.reduce((s, i) => s + (parseInt(i.calories) || 0), 0));
+
     const addIngredient = () => {
-        setEditForm(prev => ({
-            ...prev,
-            ingredients: [...prev.ingredients, { name: '', calories: '' }],
-        }));
+        setEditForm(prev => {
+            const newIngredients = [...prev.ingredients, { name: '', calories: '' }];
+            return { ...prev, ingredients: newIngredients, calories: sumIngredients(newIngredients) };
+        });
     };
 
     const updateIngredient = (idx: number, field: 'name' | 'calories', value: string) => {
-        setEditForm(prev => ({
-            ...prev,
-            ingredients: prev.ingredients.map((ing, i) => i === idx ? { ...ing, [field]: value } : ing),
-        }));
+        setEditForm(prev => {
+            const newIngredients = prev.ingredients.map((ing, i) => i === idx ? { ...ing, [field]: value } : ing);
+            return { ...prev, ingredients: newIngredients, calories: sumIngredients(newIngredients) };
+        });
     };
 
     const removeIngredient = (idx: number) => {
-        setEditForm(prev => ({
-            ...prev,
-            ingredients: prev.ingredients.filter((_, i) => i !== idx),
-        }));
+        setEditForm(prev => {
+            const newIngredients = prev.ingredients.filter((_, i) => i !== idx);
+            return { ...prev, ingredients: newIngredients, calories: sumIngredients(newIngredients) };
+        });
     };
 
     // ─── Mover comida a otro día ───────────────────────────────────────────────
