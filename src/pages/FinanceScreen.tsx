@@ -549,16 +549,14 @@ export const FinanceScreen: React.FC = () => {
 
     const recalcBalances = async () => {
         if (!user || isRecalculating) return;
-        if (!confirm('Esto recalcula los saldos de todas las cuentas a partir de su saldo inicial y todos los movimientos. ¿Continuar?')) return;
         setIsRecalculating(true);
         try {
             await FirestoreService.recalculateFinances(user.uid);
             const updated = await FirestoreService.getFeatureData(user.uid, 'finance');
             if (updated) setData(updated as FinanceData);
-            alert('✅ Saldos recalculados');
         } catch (e) {
             console.error(e);
-            alert('❌ Error al recalcular.');
+            alert('❌ Error al sincronizar.');
         } finally {
             setIsRecalculating(false);
         }
@@ -652,17 +650,17 @@ export const FinanceScreen: React.FC = () => {
                             <span className="material-symbols-outlined text-xs">{isManagingAccounts ? 'close' : 'settings'}</span>
                             {isManagingAccounts ? 'Listo' : 'Administrar'}
                         </button>
+                        <button
+                            onClick={recalcBalances}
+                            disabled={isRecalculating}
+                            className="text-[10px] text-violet-500 font-bold flex items-center gap-1 hover:text-violet-600 disabled:opacity-50"
+                            title="Sincronizar saldos"
+                        >
+                            <span className={`material-symbols-outlined text-xs ${isRecalculating ? 'animate-spin' : ''}`}>{isRecalculating ? 'progress_activity' : 'sync'}</span>
+                            {isRecalculating ? 'Sincronizando...' : 'Sincronizar'}
+                        </button>
                         {isManagingAccounts && (
                             <>
-                                <button
-                                    onClick={recalcBalances}
-                                    disabled={isRecalculating}
-                                    className="text-[10px] text-violet-500 font-bold flex items-center gap-1 hover:text-violet-600 disabled:opacity-50"
-                                    title="Recalcular saldos desde los movimientos"
-                                >
-                                    <span className={`material-symbols-outlined text-xs ${isRecalculating ? 'animate-spin' : ''}`}>{isRecalculating ? 'progress_activity' : 'sync'}</span>
-                                    {isRecalculating ? 'Recalculando...' : 'Recalcular'}
-                                </button>
                                 {archivedAccounts.length > 0 && (
                                     <button
                                         onClick={() => setShowArchived(!showArchived)}
