@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUserPreferences } from '../context/UserPreferencesContext';
 import { useTheme } from '../context/ThemeContext';
+import { triggerWhatsNew } from '../components/WhatsNewModal';
 
 export const ProfileScreen: React.FC = () => {
     const navigate = useNavigate();
@@ -228,6 +229,20 @@ export const ProfileScreen: React.FC = () => {
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* ── Ver Novedades ─────────────────────────────────────────────── */}
+            <div className="px-6 mb-4">
+                <button
+                    onClick={triggerWhatsNew}
+                    className="w-full bg-gradient-to-r from-pink-50 to-purple-50 dark:from-[#3a2028] dark:to-[#2a2035] border-2 border-pink-200 dark:border-purple-800/30 rounded-3xl p-5 flex items-center justify-center gap-3 hover:scale-[1.01] active:scale-[0.99] transition-transform"
+                >
+                    <span className="material-symbols-outlined text-pink-500 text-2xl">auto_awesome</span>
+                    <div className="text-left">
+                        <p className="font-extrabold text-pink-500 text-base leading-tight">Ver novedades</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Tutorial de los últimos cambios</p>
+                    </div>
+                </button>
             </div>
 
             {/* ── Cerrar Sesión ─────────────────────────────────────────────── */}

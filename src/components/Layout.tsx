@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 import { BottomNav } from './BottomNav';
+import { WhatsNewModal } from './WhatsNewModal';
 import { useTheme } from '../context/ThemeContext';
 
 export const Layout: React.FC = () => {
@@ -18,6 +19,9 @@ export const Layout: React.FC = () => {
                     <BottomNav />
                 </div>
             </div>
+
+            {/* Onboarding / What's New (montado a nivel del Layout para todas las rutas autenticadas) */}
+            <WhatsNewModal />
         </div>
     );
 };

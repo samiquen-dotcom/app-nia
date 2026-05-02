@@ -117,14 +117,34 @@ export interface DailyCycleEntry {
 }
 
 // ─── Wellness ─────────────────────────────────────────────────────────────────
+export interface CustomHabit {
+    id: string;
+    emoji: string;
+    label: string;
+    isDefault?: boolean;   // true para los hábitos seed (no se borran, solo se ocultan)
+    archived?: boolean;    // Hábito oculto pero conservado para histórico
+}
+
+export interface TimerSession {
+    date: string;          // YYYY-MM-DD
+    type: 'breathing' | 'pomodoro';
+    durationSec: number;   // Duración total programada en segundos
+    completed: boolean;    // true si terminó, false si fue cancelado
+    timestamp: number;
+}
+
 export interface WellnessDay {
     date: string;
     glasses: number;
-    habits: string[];
+    habits: string[];      // IDs de CustomHabit completados (compat: también acepta labels viejos)
+    sleepHours?: number;   // Horas dormidas (acepta decimales: 7.5)
+    moodId?: string;       // ID del mood del día (referencia a MoodData.customMoods)
 }
 
 export interface WellnessData {
     days: WellnessDay[];
+    customHabits?: CustomHabit[];     // Hábitos editables. Si está undefined, se inicializa con seed.
+    timerSessions?: TimerSession[];   // Historial reciente de sesiones (últimas 60).
 }
 
 // ─── Goals ────────────────────────────────────────────────────────────────────
