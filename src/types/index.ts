@@ -138,7 +138,7 @@ export interface WellnessDay {
     glasses: number;
     habits: string[];      // IDs de CustomHabit completados (compat: también acepta labels viejos)
     sleepHours?: number;   // Horas dormidas (acepta decimales: 7.5)
-    moodId?: string;       // ID del mood del día (referencia a MoodData.customMoods)
+    // Nota: el mood/sangrado del día NO viven aquí, sino en period.dailyEntries (fuente única).
 }
 
 export interface WellnessData {

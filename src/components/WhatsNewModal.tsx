@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 
 // Versión del onboarding. Bumpear cuando haya nuevas novedades para forzar reaparición.
-const WHATS_NEW_VERSION = 'v1';
+// v2: unificación del registro de mood con el cuestionario diario del ciclo.
+const WHATS_NEW_VERSION = 'v2';
 const STORAGE_KEY = `nia_whats_new_seen_${WHATS_NEW_VERSION}`;
 
 // Evento para reabrirlo desde otras pantallas (Profile)
@@ -49,10 +50,10 @@ const SLIDES: Slide[] = [
         emoji: '🌙',
         badge: 'Bienestar',
         badgeColor: 'bg-violet-100 text-violet-500',
-        title: 'Registra cómo te sientes y cuánto dormiste',
+        title: 'Tu día de hoy y sueño en un toque',
         bullets: [
-            { icon: '💭', text: '¿Cómo te sientes hoy? Toca un emoji y se guarda.' },
-            { icon: '🛌', text: 'Sueño anoche: chips rápidos de 5h a 10h.' },
+            { icon: '📝', text: 'Card "Tu día de hoy" — abre el cuestionario diario donde registras mood, sangrado, energía y síntomas en un solo lugar.' },
+            { icon: '🛌', text: 'Sueño anoche: chips rápidos de 5h a 10h con feedback de calidad.' },
             { icon: '🩸', text: 'Tip dinámico arriba según la fase de tu ciclo.' },
             { icon: '📊', text: 'Mira la tendencia de últimos 7 días en agua, sueño y mood.' },
         ],

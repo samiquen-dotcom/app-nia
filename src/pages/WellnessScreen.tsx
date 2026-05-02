@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useFeatureData } from '../hooks/useFeatureData';
-import type { WellnessData, MoodData, CustomMood, CustomHabit, TimerSession, PeriodData, MoodEntry } from '../types';
+import type { WellnessData, MoodData, CustomMood, CustomHabit, TimerSession, PeriodData } from '../types';
 import { todayStr, toLocalDateStr } from '../utils/dateHelpers';
 import { calculatePhase } from '../utils/cycleLogic';
+import { CycleDayModal } from '../components/CycleDayModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const WATER_GOAL = 8;
@@ -131,18 +132,18 @@ export const WellnessScreen: React.FC = () => {
     }, [data.customHabits]);
 
     const today = todayStr();
-    const todayData = data.days.find(d => d.date === today) ?? { date: today, glasses: 0, habits: [] as string[], sleepHours: undefined, moodId: undefined };
+    const todayData = data.days.find(d => d.date === today) ?? { date: today, glasses: 0, habits: [] as string[], sleepHours: undefined };
     const customHabits = data.customHabits ?? DEFAULT_HABITS;
     const visibleHabits = customHabits.filter(h => !h.archived);
-
-    // Mood del día (fuente de verdad: MoodData.entries)
-    const todayMoodEntry = moodData.entries.find(e => e.date === today);
 
     // Fase del ciclo (para tip)
     const phase = periodData.cycleStartDate
         ? calculatePhase(periodData.cycleStartDate, periodData.cycleLength || 28, periodData.periodLength || 5)
         : null;
     const cycleTip = getCyclePhaseTip(phase?.name ?? null);
+
+    // Modal del cuestionario diario (CycleDayModal) — fuente de verdad para mood, sangrado, síntomas
+    const [showDayModal, setShowDayModal] = useState(false);
 
     // ─── Modal states ─────────────────────────────────────────────────────────
     const [isCreatingMood, setIsCreatingMood] = useState(false);
@@ -300,26 +301,6 @@ export const WellnessScreen: React.FC = () => {
         saveMood({ customMoods: [...moodData.customMoods, ...missing] });
     };
 
-    /** Registra el mood del día. Si ya hay uno, lo reemplaza. */
-    const registerMood = (mood: CustomMood) => {
-        const entry: MoodEntry = {
-            date: today,
-            mood: mood.label,
-            emoji: mood.emoji,
-            timestamp: Date.now(),
-        };
-        const others = moodData.entries.filter(e => e.date !== today);
-        saveMood({ entries: [entry, ...others] });
-        // Compat: también actualizamos moodId en WellnessDay
-        updateToday({ moodId: mood.id });
-    };
-
-    const clearTodayMood = () => {
-        const others = moodData.entries.filter(e => e.date !== today);
-        saveMood({ entries: others });
-        updateToday({ moodId: undefined });
-    };
-
     // ─── Notifications ────────────────────────────────────────────────────────
     const requestNotif = async () => {
         const perm = await Notification.requestPermission();
@@ -334,9 +315,13 @@ export const WellnessScreen: React.FC = () => {
         return last7.map(date => data.days.find(d => d.date === date) ?? { date, glasses: 0, habits: [], sleepHours: undefined, moodId: undefined });
     }, [last7, data.days]);
 
+    // Mood de los últimos 7 días viene del cuestionario diario (fuente única)
     const last7Moods = useMemo(() => {
-        return last7.map(date => moodData.entries.find(e => e.date === date) ?? null);
-    }, [last7, moodData.entries]);
+        return last7.map(date => {
+            const entry = periodData.dailyEntries?.[date];
+            return entry?.moodEmoji ? { emoji: entry.moodEmoji, label: entry.moodLabel ?? '' } : null;
+        });
+    }, [last7, periodData.dailyEntries]);
 
     const weekTimerStats = useMemo(() => {
         const sessions = data.timerSessions ?? [];
@@ -381,40 +366,69 @@ export const WellnessScreen: React.FC = () => {
                 </div>
             )}
 
-            {/* ── Mood del día ─────────────────────────────────────────────────── */}
-            <div className="bg-white dark:bg-[#2d1820] rounded-2xl p-4 shadow-sm border border-indigo-50 dark:border-[#5a2b35]/30 mb-6">
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-bold text-slate-700 dark:text-slate-200">¿Cómo te sientes hoy?</h3>
-                    {todayMoodEntry && (
-                        <button onClick={clearTodayMood} className="text-[10px] font-bold text-slate-400 hover:text-rose-400 transition-colors">
-                            Limpiar
+            {/* ── Tu día de hoy (resumen del cuestionario diario) ────────────── */}
+            {(() => {
+                const dayEntry = periodData.dailyEntries?.[today];
+                const hasEntry = !!dayEntry && (dayEntry.moodLabel || dayEntry.hasBled !== undefined);
+                if (hasEntry) {
+                    // Resumen compacto del cuestionario ya registrado
+                    return (
+                        <button
+                            onClick={() => setShowDayModal(true)}
+                            className="w-full bg-white dark:bg-[#2d1820] rounded-2xl p-4 shadow-sm border border-indigo-50 dark:border-[#5a2b35]/30 mb-6 hover:shadow-md transition-all active:scale-[0.99] text-left"
+                        >
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="font-bold text-slate-700 dark:text-slate-200">Tu día de hoy</h3>
+                                <span className="text-[10px] font-bold text-indigo-400">Tocar para editar</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {/* Mood */}
+                                <div className="flex flex-col items-center gap-0.5 min-w-[64px] py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
+                                    <span className="text-2xl">{dayEntry.moodEmoji || '🌸'}</span>
+                                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300">{dayEntry.moodLabel || '—'}</span>
+                                </div>
+                                {/* Sangrado */}
+                                <div className={`flex flex-col items-center gap-0.5 min-w-[64px] py-2 rounded-xl ${dayEntry.hasBled ? 'bg-rose-50 dark:bg-rose-900/20' : 'bg-slate-50 dark:bg-black/20'}`}>
+                                    <span className="text-2xl">{dayEntry.hasBled ? '🩸' : '🌱'}</span>
+                                    <span className={`text-[10px] font-bold ${dayEntry.hasBled ? 'text-rose-500' : 'text-slate-400'}`}>
+                                        {dayEntry.hasBled ? 'Periodo' : 'Sin periodo'}
+                                    </span>
+                                </div>
+                                {/* Síntomas */}
+                                <div className="flex-1 min-w-0">
+                                    {dayEntry.symptoms && dayEntry.symptoms.length > 0 ? (
+                                        <div>
+                                            <p className="text-[10px] uppercase font-bold text-slate-400 mb-0.5">Síntomas</p>
+                                            <p className="text-xs font-bold text-slate-600 dark:text-slate-300 truncate">
+                                                {dayEntry.symptoms.length} registrado{dayEntry.symptoms.length === 1 ? '' : 's'}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <p className="text-[10px] text-slate-400">Día completo ✨</p>
+                                    )}
+                                </div>
+                            </div>
                         </button>
-                    )}
-                </div>
-                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-                    {moodData.customMoods.map(mood => {
-                        const selected = todayMoodEntry?.mood === mood.label;
-                        return (
-                            <button
-                                key={mood.id}
-                                onClick={() => registerMood(mood)}
-                                className={`flex flex-col items-center justify-center gap-0.5 min-w-[64px] h-[72px] rounded-xl transition-all active:scale-95 flex-shrink-0
-                                    ${selected ? 'bg-indigo-100 dark:bg-indigo-900/40 ring-2 ring-indigo-400 shadow-sm' : 'bg-slate-50 dark:bg-black/20 hover:bg-indigo-50'}`}
-                            >
-                                <span className={`text-2xl transition-transform ${selected ? 'scale-110' : ''}`}>{mood.emoji}</span>
-                                <span className={`text-[10px] font-bold ${selected ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'}`}>
-                                    {mood.label}
-                                </span>
-                            </button>
-                        );
-                    })}
-                </div>
-                {todayMoodEntry && (
-                    <p className="text-[11px] text-indigo-400 font-medium mt-2 text-center">
-                        Hoy te sientes {todayMoodEntry.emoji} <span className="font-bold">{todayMoodEntry.mood}</span>
-                    </p>
-                )}
-            </div>
+                    );
+                }
+                // CTA para llenar el cuestionario diario
+                return (
+                    <button
+                        onClick={() => setShowDayModal(true)}
+                        className="w-full bg-gradient-to-r from-indigo-50 to-pink-50 dark:from-[#2a2035] dark:to-[#3a2028] rounded-2xl p-4 shadow-sm border-2 border-dashed border-indigo-200 dark:border-indigo-900/40 mb-6 hover:shadow-md transition-all active:scale-[0.99] flex items-center gap-3 text-left"
+                    >
+                        <div className="w-12 h-12 flex-shrink-0 bg-white dark:bg-black/20 rounded-full flex items-center justify-center text-indigo-500 shadow-sm">
+                            <span className="material-symbols-outlined">edit_calendar</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-[10px] uppercase font-black text-indigo-400 tracking-wider mb-0.5">Aún sin registrar</p>
+                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-snug">¿Cómo te sientes hoy? Registra tu día completo</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Mood, sangrado, energía, síntomas y gym</p>
+                        </div>
+                        <span className="material-symbols-outlined text-indigo-400">chevron_right</span>
+                    </button>
+                );
+            })()}
 
             {/* ── Water Tracker ─────────────────────────────────────────────────── */}
             <div className="bg-white dark:bg-[#2d1820] rounded-2xl p-4 shadow-sm border border-blue-50 dark:border-[#5a2b35]/30 mb-6">
@@ -867,6 +881,18 @@ export const WellnessScreen: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* ── Cuestionario diario del ciclo (fuente única para mood + sangrado) ── */}
+            {showDayModal && (() => {
+                const hasEntry = !!periodData.dailyEntries?.[today]?.moodLabel;
+                return (
+                    <CycleDayModal
+                        date={today}
+                        initialMode={hasEntry ? 'readonly' : 'edit'}
+                        onClose={() => setShowDayModal(false)}
+                    />
+                );
+            })()}
         </div>
     );
 };
