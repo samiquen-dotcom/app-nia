@@ -4,20 +4,18 @@ import { CycleWidget } from '../components/CycleWidget';
 import { CycleDayModal } from '../components/CycleDayModal';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService, Features } from '../services/firestore';
-import { getPredictions, calculatePhase, getPredictiveAlert } from '../utils/cycleLogic';
+import { getPredictions, calculatePhase, getEnhancedBodyAlert, getDailyAffirmation, type EnhancedBodyAlert, type PhaseInfo } from '../utils/cycleLogic';
+import { todayStr, getCurrentWeekDates, getCurrentMonthKey } from '../utils/dateHelpers';
 import type { GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt, WellnessData, Transaction, TravelData, Trip } from '../types';
-
-const todayStr = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-};
 
 interface DashboardData {
     calories: number;
+    calorieGoal: number;       // Meta diaria de calorías (default 2000)
     gymDone: boolean;
     gymGoal: number;
     gymWeeklyCompleted: number;
     todaySpent: number;
+    monthSpent: number;        // Gasto acumulado del mes (para contexto)
     goalsTotal: number;
     goalsDone: number;
     waterToday: number;
@@ -27,18 +25,11 @@ interface DashboardData {
         day: number;
         daysUntil: number;
     };
-    predictiveAlert?: string | null;
+    bodyAlert?: EnhancedBodyAlert | null;
+    phase?: PhaseInfo | null;     // Fase actual (para afirmación por fase)
     pendingReviewDate?: string | null;
     upcomingTrips: Trip[];
 }
-
-const AFFIRMATIONS = [
-    '"Soy capaz de lograr todo lo que me propongo con amor y paciencia." 🌸',
-    '"Cada día soy más fuerte, más segura y más brillante." ✨',
-    '"Mi bienestar es mi prioridad y lo cuido con cariño." 💕',
-    '"Elijo la paz y el crecimiento en cada momento de mi día." 🌿',
-    '"Soy suficiente, soy capaz, soy Nia." 💪',
-];
 
 export const HomeScreen: React.FC = () => {
     const navigate = useNavigate();
@@ -49,7 +40,7 @@ export const HomeScreen: React.FC = () => {
         weekday: 'long', day: 'numeric', month: 'long'
     });
     const [dashboard, setDashboard] = useState<DashboardData>({
-        calories: 0, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, goalsTotal: 0, goalsDone: 0, waterToday: 0, upcomingTrips: [],
+        calories: 0, calorieGoal: 2000, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, monthSpent: 0, goalsTotal: 0, goalsDone: 0, waterToday: 0, upcomingTrips: [],
     });
     const { user } = useAuth();
     const displayName = user?.displayName ? user.displayName.split(' ')[0] : 'Nia';
@@ -59,8 +50,8 @@ export const HomeScreen: React.FC = () => {
     const [pendingDebts, setPendingDebts] = useState<Debt[]>([]);
     const [showDebtModal, setShowDebtModal] = useState(false);
 
-    // Pick a stable affirmation for today (changes daily)
-    const affirmation = AFFIRMATIONS[new Date().getDate() % AFFIRMATIONS.length];
+    // Afirmación por fase del ciclo (rota diariamente). Si no hay fase, usa lista genérica.
+    const affirmation = getDailyAffirmation(dashboard.phase ?? null);
 
 
 
@@ -115,37 +106,32 @@ export const HomeScreen: React.FC = () => {
                 }
             }
 
-            // Today's calories from Food
+            // Today's calories from Food + meta diaria (preferences.calorieGoal o default 2000)
             const todayFood = food?.days?.find(d => d.date === today);
             let calories = 0;
             if (todayFood) {
                 calories = todayFood.items?.reduce((sum: number, item: any) => sum + item.calories, 0) || 0;
             }
+            const calorieGoal = (food as any)?.preferences?.calorieGoal ?? 2000;
 
             // Gym: did she work out today? What's the weekly progress?
             const gymDone = gym?.history?.some(h => h.date === today) ?? false;
             const gymGoal = gym?.goalDaysPerWeek ?? 5;
 
-            // Calculate weekly completed
-            const currentDay = new Date().getDay();
-            const diff = currentDay === 0 ? -6 : 1 - currentDay; // Adjust if Sunday
-            const monday = new Date();
-            monday.setDate(monday.getDate() + diff);
-            monday.setHours(0, 0, 0, 0);
-
+            // Calculate weekly completed (usa util compartido)
             let gymWeeklyCompleted = 0;
             if (gym?.history) {
-                const weekDates = Array.from({ length: 7 }, (_, i) => {
-                    const d = new Date(monday);
-                    d.setDate(monday.getDate() + i);
-                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                });
+                const weekDates = getCurrentWeekDates();
                 gymWeeklyCompleted = weekDates.filter(date => gym.history.some(h => h.date === date)).length;
             }
 
-            // Finance: today's expenses (filter by dateISO for reliability using the recent tx subcollection)
+            // Finance: today's expenses + month accumulated (para contexto)
+            const monthKey = getCurrentMonthKey(); // YYYY-MM
             const todaySpent = txData.transactions
                 ?.filter(t => t.type === 'expense' && t.dateISO === today)
+                .reduce((sum, t) => sum + t.amount, 0) ?? 0;
+            const monthSpent = txData.transactions
+                ?.filter(t => t.type === 'expense' && t.dateISO?.startsWith(monthKey))
                 .reduce((sum, t) => sum + t.amount, 0) ?? 0;
 
             // Goals completion
@@ -158,7 +144,7 @@ export const HomeScreen: React.FC = () => {
 
             // Cycle Status Logic
             let periodStatus = undefined;
-            let predictiveAlert = null;
+            let phase: PhaseInfo | null = null;
             let pendingReviewDate = null;
 
             if (period) {
@@ -188,8 +174,7 @@ export const HomeScreen: React.FC = () => {
                 let daysUntil = 28; // Default
 
                 if (period.cycleStartDate) {
-                    const phase = calculatePhase(period.cycleStartDate, period.cycleLength || 28, period.periodLength || 5);
-                    predictiveAlert = getPredictiveAlert(phase);
+                    phase = calculatePhase(period.cycleStartDate, period.cycleLength || 28, period.periodLength || 5);
 
                     // Calculate days until next period
                     const predictions = getPredictions(period.cycleStartDate, period.cycleLength);
@@ -227,7 +212,12 @@ export const HomeScreen: React.FC = () => {
                 periodStatus = { isActive, isDayMissing, day, daysUntil };
             }
 
-            setDashboard({ calories, gymDone, gymGoal, gymWeeklyCompleted, todaySpent, goalsTotal, goalsDone, waterToday, periodStatus, predictiveAlert, pendingReviewDate, upcomingTrips });
+            // Enhanced Body Alert: combina fase del ciclo + dailyEntry de hoy (energía, dolor, síntomas).
+            // Si no hay nada, devuelve un fallback que invita a registrar el ciclo.
+            const todayEntry = period?.dailyEntries?.[today] ?? null;
+            const bodyAlert = getEnhancedBodyAlert(phase, todayEntry);
+
+            setDashboard({ calories, calorieGoal, gymDone, gymGoal, gymWeeklyCompleted, todaySpent, monthSpent, goalsTotal, goalsDone, waterToday, periodStatus, bodyAlert, phase, pendingReviewDate, upcomingTrips });
 
         });
     }, [user, refresh]);
@@ -290,22 +280,48 @@ export const HomeScreen: React.FC = () => {
                 </div>
             </section>
 
-            {/* ── Cycle Insight (Predictive Alert) ───────────────────────────────── */}
-            {dashboard.predictiveAlert && (
-                <section className="px-6 py-4 pb-0">
-                    <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-[#2a2035] dark:to-[#332038] rounded-3xl p-4 shadow-sm border border-indigo-100 dark:border-purple-900/40 flex items-start gap-4 transition-all">
-                        <div className="w-12 h-12 flex-shrink-0 bg-white dark:bg-black/20 rounded-full shadow-sm text-indigo-500 flex items-center justify-center">
-                            <span className="material-symbols-outlined text-xl">auto_awesome</span>
-                        </div>
-                        <div>
-                            <p className="text-[10px] uppercase font-black text-indigo-400 mb-0.5 tracking-wider">Tu Cuerpo Hoy</p>
-                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-snug">
-                                {dashboard.predictiveAlert}
-                            </p>
-                        </div>
-                    </div>
-                </section>
-            )}
+            {/* ── Tu Cuerpo Hoy (Enhanced Body Alert) ────────────────────────────── */}
+            {dashboard.bodyAlert && (() => {
+                const alert = dashboard.bodyAlert;
+                // Paleta según severidad
+                const palette = alert.severity === 'care'
+                    ? { bg: 'from-rose-50 to-pink-50 dark:from-[#3a1820] dark:to-[#2d1820]', border: 'border-rose-100 dark:border-rose-900/40', icon: 'text-rose-500', label: 'text-rose-400', symbol: 'spa' }
+                    : alert.severity === 'energy'
+                    ? { bg: 'from-amber-50 to-orange-50 dark:from-[#3a2820] dark:to-[#2d1f15]', border: 'border-amber-100 dark:border-amber-900/40', icon: 'text-amber-500', label: 'text-amber-400', symbol: 'bolt' }
+                    : { bg: 'from-indigo-50 to-purple-50 dark:from-[#2a2035] dark:to-[#332038]', border: 'border-indigo-100 dark:border-purple-900/40', icon: 'text-indigo-500', label: 'text-indigo-400', symbol: 'auto_awesome' };
+                // Badge según fuente del insight (para que se note que es dinámico)
+                const sourceBadge = alert.source === 'combined' ? '✦ Personalizado' : alert.source === 'entry' ? '✦ Según tu día' : alert.source === 'fallback' ? 'Empieza aquí' : null;
+                return (
+                    <section className="px-6 py-4 pb-0">
+                        <button
+                            onClick={() => navigate('/period')}
+                            className={`w-full text-left bg-gradient-to-r ${palette.bg} rounded-3xl p-4 shadow-sm border ${palette.border} flex items-start gap-4 transition-all hover:shadow-md active:scale-[0.99] cursor-pointer`}
+                        >
+                            <div className={`w-12 h-12 flex-shrink-0 bg-white dark:bg-black/20 rounded-full shadow-sm ${palette.icon} flex items-center justify-center`}>
+                                <span className="material-symbols-outlined text-xl">{palette.symbol}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 mb-0.5">
+                                    <p className={`text-[10px] uppercase font-black ${palette.label} tracking-wider`}>Tu Cuerpo Hoy</p>
+                                    {sourceBadge && (
+                                        <span className={`text-[9px] font-bold ${palette.label} bg-white/60 dark:bg-white/10 px-1.5 py-0.5 rounded-full`}>
+                                            {sourceBadge}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-snug">
+                                    {alert.headline}
+                                </p>
+                                {alert.detail && (
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-snug mt-1">
+                                        {alert.detail}
+                                    </p>
+                                )}
+                            </div>
+                        </button>
+                    </section>
+                );
+            })()}
 
             {/* ── Cycle Widget (Banner Mode) ─────────────────────────────────────── */}
             {/* Show only if Urgent: Active & Missing OR Inactive & <= 2 days */}
@@ -465,18 +481,53 @@ export const HomeScreen: React.FC = () => {
                     </div>
 
                     {/* Calories Card */}
-                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start">
-                            <div className="bg-cyan-100 p-2 rounded-full text-cyan-600">
-                                <span className="material-symbols-outlined text-lg">nutrition</span>
-                            </div>
-                        </div>
-                        <div className="text-center">
-                            <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">{dashboard.calories}</span>
-                            <p className="text-[10px] text-slate-400">kcal consumidas</p>
-                            <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">Calorías</p>
-                        </div>
-                    </div>
+                    {(() => {
+                        const cal = dashboard.calories;
+                        const goal = dashboard.calorieGoal;
+                        const pct = goal > 0 ? Math.min((cal / goal) * 100, 100) : 0;
+                        const remaining = Math.max(0, goal - cal);
+                        const overshoot = cal > goal;
+                        // Estado: vacío / en camino / cerca / completo / pasado
+                        const statusLabel = cal === 0
+                            ? 'Sin registros hoy'
+                            : overshoot
+                                ? `+${(cal - goal).toLocaleString()} sobre meta`
+                                : pct >= 90
+                                    ? '¡Casi en meta! 🎯'
+                                    : `${remaining.toLocaleString()} kcal por consumir`;
+                        const barColor = overshoot ? 'bg-amber-400' : pct >= 90 ? 'bg-emerald-400' : 'bg-cyan-400';
+                        return (
+                            <button
+                                onClick={() => navigate('/food')}
+                                className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow text-left"
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div className="bg-cyan-100 p-2 rounded-full text-cyan-600">
+                                        <span className="material-symbols-outlined text-lg">nutrition</span>
+                                    </div>
+                                    <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 px-2 py-1 rounded-full border border-cyan-100 dark:border-cyan-800">
+                                        {Math.round(pct)}%
+                                    </span>
+                                </div>
+                                <div>
+                                    <p className="font-bold text-slate-700 dark:text-slate-200">Calorías</p>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                        <span className="font-extrabold text-slate-800 dark:text-slate-100 text-sm">{cal.toLocaleString()}</span>
+                                        <span className="text-slate-400"> / {goal.toLocaleString()} kcal</span>
+                                    </p>
+                                    <p className={`text-[10px] font-bold mt-0.5 ${overshoot ? 'text-amber-500' : 'text-cyan-500'}`}>
+                                        {statusLabel}
+                                    </p>
+                                    <div className="w-full bg-cyan-50 dark:bg-black/20 h-1.5 rounded-full mt-2 overflow-hidden">
+                                        <div
+                                            className={`${barColor} h-1.5 rounded-full transition-all`}
+                                            style={{ width: `${pct}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            </button>
+                        );
+                    })()}
 
                     {/* Gym Card */}
                     <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-shadow">
@@ -503,26 +554,61 @@ export const HomeScreen: React.FC = () => {
                         <div className="absolute -bottom-4 -right-4 bg-emerald-50 w-24 h-24 rounded-full opacity-50 z-0 group-hover:scale-110 transition-transform"></div>
                     </div>
 
-                    {/* Finance Card */}
-                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start">
-                            <div className="bg-purple-100 p-2 rounded-full text-purple-500">
-                                <span className="material-symbols-outlined text-lg">account_balance_wallet</span>
-                            </div>
-                        </div>
-                        <div>
-                            <p className="font-bold text-slate-700 dark:text-slate-200">Gastado</p>
-                            <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">
-                                ${dashboard.todaySpent.toLocaleString('es-CO')}
-                            </span>
-                            <div className="flex items-center gap-1 mt-1">
-                                <div className={`w-2 h-2 rounded-full ${dashboard.todaySpent > 0 ? 'bg-rose-400' : 'bg-emerald-400'}`}></div>
-                                <p className="text-[10px] text-slate-400">
-                                    {dashboard.todaySpent === 0 ? 'Sin gastos hoy' : 'Hoy'}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                    {/* Finance Card — gasto del día con contexto del mes */}
+                    {(() => {
+                        const today = dashboard.todaySpent;
+                        const month = dashboard.monthSpent;
+                        // Promedio diario del mes hasta hoy (incluyendo hoy)
+                        const dayOfMonth = new Date().getDate();
+                        const dailyAvg = dayOfMonth > 0 ? Math.round(month / dayOfMonth) : 0;
+                        // Proyección del mes (si sigues a este ritmo)
+                        const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+                        const projection = dailyAvg * daysInMonth;
+                        // Comparación del día vs promedio
+                        const isAboveAvg = dailyAvg > 0 && today > dailyAvg * 1.2;
+                        const isBelowAvg = today === 0 || (dailyAvg > 0 && today < dailyAvg * 0.5);
+                        const dotColor = today === 0 ? 'bg-emerald-400' : isAboveAvg ? 'bg-rose-400' : isBelowAvg ? 'bg-emerald-400' : 'bg-amber-400';
+                        const subLabel = today === 0
+                            ? 'Sin gastos hoy 🎉'
+                            : isAboveAvg
+                                ? 'Hoy vas sobre tu promedio'
+                                : isBelowAvg
+                                    ? 'Hoy vas bajo el promedio'
+                                    : 'En línea con el mes';
+                        return (
+                            <button
+                                onClick={() => navigate('/finance')}
+                                className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow text-left"
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div className="bg-purple-100 p-2 rounded-full text-purple-500">
+                                        <span className="material-symbols-outlined text-lg">account_balance_wallet</span>
+                                    </div>
+                                    {dailyAvg > 0 && (
+                                        <span className="text-[10px] font-bold text-purple-500 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-full">
+                                            ~${(dailyAvg / 1000).toFixed(0)}k/día
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <p className="font-bold text-slate-700 dark:text-slate-200">Gastado</p>
+                                    <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">
+                                        ${today.toLocaleString('es-CO')}
+                                    </span>
+                                    <div className="flex items-center gap-1 mt-1">
+                                        <div className={`w-2 h-2 rounded-full ${dotColor}`}></div>
+                                        <p className="text-[10px] text-slate-400 truncate">{subLabel}</p>
+                                    </div>
+                                    {month > 0 && (
+                                        <p className="text-[10px] text-slate-400 mt-0.5">
+                                            Mes: <span className="font-bold text-slate-600 dark:text-slate-300">${month.toLocaleString('es-CO')}</span>
+                                            {projection > 0 && <span className="text-slate-400"> · proy. ${(projection / 1000).toFixed(0)}k</span>}
+                                        </p>
+                                    )}
+                                </div>
+                            </button>
+                        );
+                    })()}
 
                     {/* Wellness / Water Card */}
                     <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow">

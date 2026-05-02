@@ -1,11 +1,14 @@
-
+import { todayStr as _todayStr, diffDays as _diffDays } from './dateHelpers';
+import type { DailyCycleEntry } from '../types';
 
 export type PhaseType = 'Menstrual' | 'Folicular' | 'Ovulación' | 'Lútea';
 
-interface PhaseInfo {
+export interface PhaseInfo {
     name: PhaseType;
     desc: string;
     day: number;
+    cycleLength: number;       // Total length of the cycle (used by alerts to compute days-left)
+    daysUntilNextPeriod: number; // Días que faltan para la próxima menstruación (0 si está activa)
     color: string;
     bg: string;
     icon: string;
@@ -68,17 +71,11 @@ export const ENERGY_LEVELS: EnergyConfig[] = [
     }
 ];
 
-// Helper to get today string YYYY-MM-DD in local time (prevent UTC offset bug)
-export const todayStr = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-};
-
-const diffDays = (from: string, to: string) => {
-    const a = new Date(from + 'T00:00:00');
-    const b = new Date(to + 'T00:00:00');
-    return Math.floor((b.getTime() - a.getTime()) / 86_400_000);
-};
+// Re-export todayStr/diffDays desde dateHelpers para mantener compatibilidad con
+// imports existentes (CycleWidget, PeriodScreen). Nuevo código debe importar
+// directamente desde '../utils/dateHelpers'.
+export const todayStr = _todayStr;
+const diffDays = _diffDays;
 
 // ─── 2. Phase Calculation ─────────────────────────────────────────────────────
 
@@ -134,7 +131,10 @@ export const calculatePhase = (startDate: string, cycleLength: number, periodLen
         case 'Lútea': gym = 'Fuerza moderada, baja intensidad al final.'; break;
     }
 
-    return { name: phase, desc, day, color, bg, icon, gymAdvice: gym };
+    // Días hasta la próxima menstruación (0 si estamos en fase menstrual)
+    const daysUntilNextPeriod = phase === 'Menstrual' ? 0 : Math.max(0, cycleLength - day);
+
+    return { name: phase, desc, day, cycleLength, daysUntilNextPeriod, color, bg, icon, gymAdvice: gym };
 };
 
 // ─── 3. Predictions ───────────────────────────────────────────────────────────
@@ -244,19 +244,162 @@ export const getPredictiveAlert = (phase: PhaseInfo | null): string | null => {
 
     switch (phase.name) {
         case 'Menstrual':
-            if (phase.day === 1 || phase.day === 2) return "Hoy podrías retener líquidos y tener baja energía. ¡Consiéntete! ☕";
+            if (phase.day === 1) return "Día 1: tu cuerpo está soltando. Calor, descanso y mucha agua 💧.";
+            if (phase.day === 2) return "Hoy podrías retener líquidos y tener baja energía. ¡Consiéntete! ☕";
+            if (phase.day === 3) return "El flujo suele bajar. Si te sientes mejor, una caminata corta ayuda 🚶‍♀️.";
             return "Tu cuerpo se está limpiando y renovando poco a poco. Mantente hidratada 💧.";
         case 'Folicular':
+            if (phase.day <= 7) return "Tu energía empieza a despertar. Buen momento para planear la semana 🌱.";
             if (phase.day >= 8 && phase.day <= 10) return "Semana ideal para entrenamientos intensos 💪.";
-            return "¡Tu energía y creatividad empiezan a subir! Sácale jugo 🚀";
+            return "¡Tu energía y creatividad están en su punto! Sácale jugo 🚀";
         case 'Ovulación':
+            if (phase.day <= 14) return "Pico hormonal: te sientes magnética. Habla, presenta, conecta ✨.";
             return "Estás radiante. Hoy es un día perfecto para socializar o pedir lo que quieres ✨.";
-        case 'Lútea':
-            if (phase.desc.includes('~3') || phase.desc.includes('~2') || phase.desc.includes('~1')) {
+        case 'Lútea': {
+            // Usar daysUntilNextPeriod en vez de parsear el desc (anti-frágil)
+            if (phase.daysUntilNextPeriod <= 3) {
                 return "Posible día de mayor sensibilidad emocional o antojos físicos 🍫.";
             }
-            return "Tu energía comenzará a bajar el ritmo. Escucha a tu intuición 🍂.";
+            if (phase.daysUntilNextPeriod <= 7) {
+                return "Tu energía comienza a bajar. Prioriza tareas mentales sobre físicas 🍂.";
+            }
+            return "Fase calmada. Buen momento para terminar pendientes y organizar 📋.";
+        }
         default:
             return null;
     }
 }
+
+// ─── 6. Enhanced Body Alert (Phase + Daily Entry) ─────────────────────────────
+// Combina la fase del ciclo con los datos que la usuaria registró HOY (energía,
+// dolor, síntomas) para dar una recomendación más concreta. Si no hay entry
+// del día, devuelve el alert básico de la fase.
+
+const ENERGY_BODY_HINT: Record<EnergyLevel, string> = {
+    ahorro:  'Hoy registraste energía baja. Permítete bajar el ritmo: agua, calor y descanso 🪫.',
+    poco:    'Energía algo apagada hoy. Movimiento suave, no exigirte 📉.',
+    estable: 'Energía estable. Mantén el ritmo, sin sobreexigirte 🆗.',
+    impulso: '¡Vas con buena energía! Aprovecha para entrenar o avanzar pendientes 📈.',
+    tope:    'Estás a tope hoy. Día perfecto para retos físicos o mentales ⚡.',
+};
+
+export interface EnhancedBodyAlert {
+    headline: string;          // Texto principal corto
+    detail?: string;           // Detalle/sub-texto opcional
+    severity: 'info' | 'care' | 'energy'; // Para colorear el card
+    source: 'phase' | 'entry' | 'combined' | 'fallback';
+}
+
+export const getEnhancedBodyAlert = (
+    phase: PhaseInfo | null,
+    todayEntry: DailyCycleEntry | null | undefined,
+): EnhancedBodyAlert | null => {
+    // Sin fase calculada: damos un fallback genérico solo si tampoco hay entry
+    if (!phase && !todayEntry) {
+        return {
+            headline: 'Registra tu ciclo para recibir insights diarios 🌸',
+            detail: 'Toca aquí para empezar a hacer seguimiento.',
+            severity: 'info',
+            source: 'fallback',
+        };
+    }
+
+    // Señales del día con prioridad alta: dolor fuerte → recomendación de cuidado
+    if (todayEntry?.painLevel && todayEntry.painLevel >= 6) {
+        return {
+            headline: 'Hoy registraste dolor fuerte. Calor + descanso 🛌',
+            detail: phase ? `Estás en fase ${phase.name.toLowerCase()}. Si el dolor persiste varios ciclos, conviene consultar.` : undefined,
+            severity: 'care',
+            source: todayEntry ? 'combined' : 'entry',
+        };
+    }
+
+    // Combinar fase + energía registrada
+    if (phase && todayEntry?.energy) {
+        const energyHint = ENERGY_BODY_HINT[todayEntry.energy];
+        const phaseAlert = getPredictiveAlert(phase);
+        return {
+            headline: energyHint,
+            detail: phaseAlert ?? undefined,
+            severity: todayEntry.energy === 'ahorro' || todayEntry.energy === 'poco' ? 'care' : 'energy',
+            source: 'combined',
+        };
+    }
+
+    // Síntomas notables sin energía explícita
+    if (phase && todayEntry?.symptoms && todayEntry.symptoms.length > 0) {
+        const phaseAlert = getPredictiveAlert(phase);
+        return {
+            headline: `Registraste ${todayEntry.symptoms.length === 1 ? '1 síntoma' : `${todayEntry.symptoms.length} síntomas`} hoy. Escucha a tu cuerpo 💕`,
+            detail: phaseAlert ?? undefined,
+            severity: 'care',
+            source: 'combined',
+        };
+    }
+
+    // Fallback: alerta básica de la fase
+    if (phase) {
+        const alert = getPredictiveAlert(phase);
+        if (!alert) return null;
+        return {
+            headline: alert,
+            detail: undefined,
+            severity: phase.name === 'Menstrual' || phase.name === 'Lútea' ? 'care' : 'energy',
+            source: 'phase',
+        };
+    }
+
+    return null;
+};
+
+// ─── 7. Phase-aware Affirmations ──────────────────────────────────────────────
+// 5 afirmaciones por fase + 5 genéricas. Total: 25. Se elige una según la fecha
+// para que sea estable durante el día pero rote.
+
+const AFFIRMATIONS_BY_PHASE: Record<PhaseType, string[]> = {
+    Menstrual: [
+        '"Honro mi cuerpo y le doy el descanso que merece." 🩸',
+        '"Soltar también es avanzar." 🌙',
+        '"Mi sensibilidad es mi superpoder." 💕',
+        '"Cuidarme es prioridad, no lujo." 🛁',
+        '"Cada ciclo soy una versión más sabia de mí." 🌸',
+    ],
+    Folicular: [
+        '"Mi energía está despertando y la canalizo en lo que amo." 🌱',
+        '"Soy creadora, hoy planto semillas que crecerán." ✨',
+        '"Tengo claridad para decidir lo que es bueno para mí." 💫',
+        '"Estoy lista para empezar de nuevo, con más sabiduría." 🚀',
+        '"Mi mente y mi cuerpo se están alineando." 🌿',
+    ],
+    Ovulación: [
+        '"Soy magnética, brillo desde adentro." ✨',
+        '"Hoy mi voz se escucha clara y segura." 🎤',
+        '"Atraigo lo que merezco con facilidad." 💖',
+        '"Soy capaz de lograr todo lo que me propongo." 💪',
+        '"Mi confianza inspira a quienes me rodean." 🌟',
+    ],
+    Lútea: [
+        '"Bajar el ritmo también es avanzar." 🍂',
+        '"Confío en mi intuición más que nunca." 🔮',
+        '"Termino con calma lo que empecé con fuego." 📋',
+        '"Mis emociones son mensajes, no enemigos." 💕',
+        '"Me cuido con la misma ternura que cuido a otros." 🌷',
+    ],
+};
+
+const GENERIC_AFFIRMATIONS = [
+    '"Soy capaz de lograr todo lo que me propongo con amor y paciencia." 🌸',
+    '"Cada día soy más fuerte, más segura y más brillante." ✨',
+    '"Mi bienestar es mi prioridad y lo cuido con cariño." 💕',
+    '"Elijo la paz y el crecimiento en cada momento de mi día." 🌿',
+    '"Soy suficiente, soy capaz, soy Nia." 💪',
+];
+
+export const getDailyAffirmation = (phase: PhaseInfo | null): string => {
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86_400_000);
+    if (phase) {
+        const list = AFFIRMATIONS_BY_PHASE[phase.name];
+        return list[dayOfYear % list.length];
+    }
+    return GENERIC_AFFIRMATIONS[dayOfYear % GENERIC_AFFIRMATIONS.length];
+};
