@@ -28,7 +28,11 @@ export const VoiceRecorder: React.FC<Props> = ({ onSave, maxDurationMs = 90_000 
     const [recording, setRecording] = useState(false);
     const [elapsedMs, setElapsedMs] = useState(0);
     const [error, setError] = useState<string | null>(null);
-    const [enableTranscript, setEnableTranscript] = useState(true);
+    // Off por defecto: en Android Chrome, SpeechRecognition y MediaRecorder
+    // chocan por acceso exclusivo al micrófono. La usuaria puede activarlo
+    // explícitamente si su navegador lo soporta sin conflicto (Chrome Desktop).
+    const [enableTranscript, setEnableTranscript] = useState(false);
+    const [transcriptInfo, setTranscriptInfo] = useState<string | null>(null);
 
     const recorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
@@ -64,32 +68,41 @@ export const VoiceRecorder: React.FC<Props> = ({ onSave, maxDurationMs = 90_000 
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        const w = canvas.width = canvas.clientWidth * (window.devicePixelRatio || 1);
-        const h = canvas.height = canvas.clientHeight * (window.devicePixelRatio || 1);
-        const buf = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteTimeDomainData(buf);
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.width = canvas.clientWidth * dpr;
+        const h = canvas.height = canvas.clientHeight * dpr;
 
-        // sample 32 bins for waveform memory
-        const stride = Math.floor(buf.length / 32) || 1;
-        let peak = 0;
-        for (let i = 0; i < buf.length; i += stride) {
-            peak = Math.max(peak, Math.abs(buf[i] - 128) / 128);
+        const freq = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(freq);
+
+        const BARS = 32;
+        const stride = Math.max(1, Math.floor(freq.length / BARS));
+        const bars: number[] = [];
+        for (let i = 0; i < BARS; i++) {
+            let sum = 0;
+            for (let j = 0; j < stride; j++) sum += freq[i * stride + j] || 0;
+            // Amplificar 1.6x — voz normal queda visible. Cap a 1.
+            bars.push(Math.min(1, (sum / stride / 255) * 1.6));
         }
-        waveformRef.current.push(Math.min(1, peak));
-        if (waveformRef.current.length > 64) waveformRef.current.shift();
+
+        // Memoria del waveform final del clip: guardar peak por tick.
+        const peak = bars.reduce((a, b) => Math.max(a, b), 0);
+        waveformRef.current.push(peak);
+        if (waveformRef.current.length > 96) waveformRef.current.shift();
 
         ctx.clearRect(0, 0, w, h);
-        const wf = waveformRef.current;
-        const barW = w / Math.max(wf.length, 1);
         ctx.fillStyle = '#ec4899';
-        for (let i = 0; i < wf.length; i++) {
-            const barH = wf[i] * h * 0.9;
-            ctx.fillRect(i * barW, (h - barH) / 2, barW * 0.6, barH);
+        const barW = w / BARS;
+        const minH = 3 * dpr; // siempre visible
+        for (let i = 0; i < BARS; i++) {
+            const barH = Math.max(minH, bars[i] * h * 0.85);
+            ctx.fillRect(i * barW + barW * 0.2, (h - barH) / 2, barW * 0.6, barH);
         }
     };
 
     const startRecording = async () => {
         setError(null);
+        setTranscriptInfo(null);
         waveformRef.current = [];
         transcriptRef.current = '';
         try {
@@ -111,10 +124,14 @@ export const VoiceRecorder: React.FC<Props> = ({ onSave, maxDurationMs = 90_000 
             src.connect(analyser);
             analyserRef.current = analyser;
 
-            // Speech recognition (opcional)
+            // Speech recognition (opcional). En Chrome Android choca con
+            // MediaRecorder por acceso exclusivo al micrófono — capturamos el
+            // error y avisamos suave en vez de gritar al sistema.
             if (enableTranscript) {
                 const SR = getSpeechRecognition();
-                if (SR) {
+                if (!SR) {
+                    setTranscriptInfo('Tu navegador no soporta transcripción.');
+                } else {
                     const r = new SR();
                     r.continuous = true;
                     r.interimResults = false;
@@ -126,8 +143,21 @@ export const VoiceRecorder: React.FC<Props> = ({ onSave, maxDurationMs = 90_000 
                             }
                         }
                     };
-                    r.onerror = () => { /* silent */ };
-                    try { r.start(); recognitionRef.current = r; } catch {}
+                    r.onerror = (ev: any) => {
+                        // Error típico en Android: "not-allowed" o "audio-capture"
+                        // porque Chrome bloquea el mic cuando MediaRecorder lo tiene.
+                        if (ev?.error === 'not-allowed' || ev?.error === 'audio-capture' || ev?.error === 'aborted') {
+                            setTranscriptInfo('La transcripción no está disponible en este navegador mientras grabas.');
+                        }
+                        try { r.stop(); } catch {}
+                        recognitionRef.current = null;
+                    };
+                    try {
+                        r.start();
+                        recognitionRef.current = r;
+                    } catch {
+                        setTranscriptInfo('No se pudo activar la transcripción.');
+                    }
                 }
             }
 
@@ -202,15 +232,21 @@ export const VoiceRecorder: React.FC<Props> = ({ onSave, maxDurationMs = 90_000 
                         <span className="material-symbols-outlined text-3xl">mic</span>
                     </button>
                     <p className="text-xs text-slate-500 dark:text-slate-400">Toca para empezar a grabar</p>
-                    <label className="flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 cursor-pointer select-none">
-                        <input
-                            type="checkbox"
-                            checked={enableTranscript}
-                            onChange={e => setEnableTranscript(e.target.checked)}
-                            className="accent-rose-400"
-                        />
-                        Transcribir mientras hablo (si tu navegador lo soporta)
-                    </label>
+                    <details className="text-[10px] text-slate-400 dark:text-slate-500 select-none">
+                        <summary className="cursor-pointer hover:text-rose-400">Opciones avanzadas</summary>
+                        <label className="flex items-start gap-2 mt-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={enableTranscript}
+                                onChange={e => setEnableTranscript(e.target.checked)}
+                                className="accent-rose-400 mt-0.5"
+                            />
+                            <span className="text-left">
+                                Intentar transcripción en vivo
+                                <span className="block text-[9px] opacity-70 mt-0.5">Solo Chrome Desktop. En móvil suele chocar con la grabación.</span>
+                            </span>
+                        </label>
+                    </details>
                     {error && <p className="text-xs text-rose-500">{error}</p>}
                 </div>
             ) : (
@@ -232,6 +268,11 @@ export const VoiceRecorder: React.FC<Props> = ({ onSave, maxDurationMs = 90_000 
                             className="px-4 py-2 rounded-full text-xs font-bold bg-rose-500 text-white"
                         >Guardar memo</button>
                     </div>
+                    {transcriptInfo && (
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 italic text-center max-w-[260px]">
+                            {transcriptInfo}
+                        </p>
+                    )}
                 </div>
             )}
         </div>
