@@ -236,7 +236,12 @@ export interface VoiceClip {
 
 export interface LoopPattern {
     bpm: number;              // 60-160
-    steps: boolean[][];       // 4 pads × 16 pasos
+    steps: boolean[][];       // pads × pasos (default 8 × 32, compatible con legacy 4 × 16)
+    volumes?: number[];       // 0-1 por pad. Default 0.8.
+    mutes?: boolean[];        // muteado por pad. Default false.
+    swing?: number;           // 0-0.3 (% de retraso de 16ths impares). Default 0.
+    reverbWet?: number;       // 0-1 nivel de reverb global. Default 0.25.
+    masterDb?: number;        // -30..+6 dB master. Default -3.
 }
 
 export interface DiaryNote {
