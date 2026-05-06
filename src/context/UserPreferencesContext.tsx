@@ -26,6 +26,7 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
     { id: 'wellness', path: '/wellness', icon: 'self_improvement', label: 'Bienestar', enabled: true },
     { id: 'goals', path: '/goals', icon: 'stars', label: 'Metas', enabled: true },
     { id: 'travel', path: '/travel', icon: 'flight', label: 'Viajes', enabled: true },
+    { id: 'diary', path: '/diary', icon: 'auto_stories', label: 'Diario', enabled: true },
 ];
 
 interface UserPreferencesContextType {

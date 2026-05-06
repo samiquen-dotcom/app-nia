@@ -12,6 +12,7 @@ import { GoalsScreen } from './pages/GoalsScreen';
 import { DebtsScreen } from './pages/DebtsScreen';
 import { ProfileScreen } from './pages/ProfileScreen';
 import { TravelScreen } from './pages/TravelScreen';
+import { DiaryScreen } from './pages/diary/DiaryScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
@@ -41,6 +42,7 @@ function App() {
                 <Route path="/goals" element={<ProtectedRoute><GoalsScreen /></ProtectedRoute>} />
                 <Route path="/debts" element={<ProtectedRoute><DebtsScreen /></ProtectedRoute>} />
                 <Route path="/travel" element={<ProtectedRoute><TravelScreen /></ProtectedRoute>} />
+                <Route path="/diary" element={<ProtectedRoute><DiaryScreen /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
               </Route>
               <Route path="*" element={

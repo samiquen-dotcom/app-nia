@@ -213,6 +213,62 @@ export interface FoodData {
     days: FoodDay[];
 }
 
+// ─── Diary (Studio) ───────────────────────────────────────────────────────────
+export type NoteType = 'thought' | 'voice' | 'letter' | 'poem';
+
+export type AmbientType = 'rain' | 'cafe' | 'wind' | null;
+
+export interface NoteContext {
+    cyclePhase?: string;       // 'Folicular' | 'Lútea' | etc.
+    cycleDay?: number;
+    moodEmoji?: string;
+    moodLabel?: string;
+    energy?: string;
+    sleepHours?: number;
+}
+
+export interface VoiceClip {
+    dataUrl: string;          // base64 audio (audio/webm or audio/mp4)
+    durationMs: number;
+    transcript?: string;
+    waveform?: number[];      // 32 valores 0-1 para dibujar la onda
+}
+
+export interface LoopPattern {
+    bpm: number;              // 60-160
+    steps: boolean[][];       // 4 pads × 16 pasos
+}
+
+export interface DiaryNote {
+    id: string;
+    type: NoteType;
+    title?: string;
+    body: string;             // markdown ligero
+    voiceClip?: VoiceClip;
+    loopPattern?: LoopPattern;
+    ambient?: AmbientType;
+    createdAt: number;
+    updatedAt?: number;
+    unlockDate?: string;      // YYYY-MM-DD para cartas selladas
+    isLocked?: boolean;
+    tags: string[];
+    context: NoteContext;
+    pinned?: boolean;
+}
+
+export interface DiaryPreferences {
+    defaultAmbient?: AmbientType;
+    serifEditor?: boolean;
+    focusMode?: boolean;
+}
+
+export interface DiaryData {
+    /** @deprecated Las notas ahora viven en la subcolección users/{uid}/features/diary/notes/{id}.
+     *  Este campo solo aparece para datos legacy en proceso de migración.  */
+    notes?: DiaryNote[];
+    preferences: DiaryPreferences;
+}
+
 // ─── Travel ───────────────────────────────────────────────────────────────────
 export type TripStatus = 'planned' | 'active' | 'completed' | 'cancelled';
 

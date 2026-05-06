@@ -14,7 +14,8 @@ import {
     deleteField,
     writeBatch
 } from 'firebase/firestore';
-import type { Transaction as Trade, FinanceAccount, MonthStats } from '../types'; // Renamed to avoid collision with Firestore Transaction
+import type { Transaction as Trade, FinanceAccount, MonthStats, DiaryNote } from '../types'; // Renamed to avoid collision with Firestore Transaction
+import { deleteDoc } from 'firebase/firestore';
 
 const DEFAULT_ACCOUNTS: FinanceAccount[] = [
     { id: 'nequi', name: 'Nequi', initialBalance: 0, balance: 0 },
@@ -35,6 +36,7 @@ export const Features = {
     GOALS: 'goals',
     MOOD: 'mood',
     TRAVEL: 'travel',
+    DIARY: 'diary',
 };
 
 const getUserDoc = (userId: string) => doc(db, 'users', userId);
@@ -480,6 +482,80 @@ export const FirestoreService = {
             console.error("Recalculate failed:", e);
             throw e;
         }
+    },
+
+    // ─── DIARY METHODS (subcolección) ──────────────────────────────────────────
+    // Cada nota vive en su propio doc bajo features/diary/notes/{id}, así cada
+    // nota puede pesar hasta 1 MiB (audio incluido) sin tope global.
+
+    getDiaryNotes: async (userId: string): Promise<DiaryNote[]> => {
+        try {
+            const notesRef = collection(db, `users/${userId}/features/${Features.DIARY}/notes`);
+            const q = query(notesRef, orderBy('createdAt', 'desc'));
+            const snap = await getDocs(q);
+            const notes: DiaryNote[] = [];
+            snap.forEach(d => notes.push(d.data() as DiaryNote));
+            return notes;
+        } catch (e) {
+            console.error('Error fetching diary notes:', e);
+            return [];
+        }
+    },
+
+    addDiaryNote: async (userId: string, note: DiaryNote): Promise<void> => {
+        const noteRef = doc(db, `users/${userId}/features/${Features.DIARY}/notes`, note.id);
+        await setDoc(noteRef, note);
+    },
+
+    updateDiaryNote: async (userId: string, noteId: string, partial: Partial<DiaryNote>): Promise<void> => {
+        const noteRef = doc(db, `users/${userId}/features/${Features.DIARY}/notes`, noteId);
+        await setDoc(noteRef, partial, { merge: true });
+    },
+
+    deleteDiaryNote: async (userId: string, noteId: string): Promise<void> => {
+        const noteRef = doc(db, `users/${userId}/features/${Features.DIARY}/notes`, noteId);
+        await deleteDoc(noteRef);
+    },
+
+    /**
+     * Migra notas que vivían en el array `notes` del doc principal del feature
+     * hacia la subcolección. Si el doc principal no tiene array, no hace nada.
+     * Idempotente: corre solo una vez por usuario.
+     */
+    migrateDiaryToSubcollection: async (userId: string): Promise<{ migrated: number }> => {
+        const diaryRef = doc(db, `users/${userId}/features`, Features.DIARY);
+        const snap = await getDoc(diaryRef);
+        if (!snap.exists()) return { migrated: 0 };
+
+        const data = snap.data();
+        const legacyNotes: DiaryNote[] = Array.isArray(data.notes) ? data.notes : [];
+        if (legacyNotes.length === 0) {
+            // Aun así limpiamos el campo si quedó vacío
+            if ('notes' in data) {
+                await setDoc(diaryRef, { notes: deleteField() }, { merge: true });
+            }
+            return { migrated: 0 };
+        }
+
+        // Escribir en batches (límite 450 ops/batch)
+        let batch = writeBatch(db);
+        let opCount = 0;
+        const notesCol = collection(db, `users/${userId}/features/${Features.DIARY}/notes`);
+        for (const n of legacyNotes) {
+            if (!n.id) continue;
+            batch.set(doc(notesCol, n.id), n);
+            opCount++;
+            if (opCount >= 450) {
+                await batch.commit();
+                batch = writeBatch(db);
+                opCount = 0;
+            }
+        }
+        // Borrar el array del doc principal en el último batch
+        batch.set(diaryRef, { notes: deleteField() }, { merge: true });
+        await batch.commit();
+        console.log(`[Diary] Migración completa: ${legacyNotes.length} notas movidas a subcolección.`);
+        return { migrated: legacyNotes.length };
     },
 
     // Eliminar cuenta y todos sus movimientos (txs donde accountId, fromAccountId o toAccountId === accountId).
