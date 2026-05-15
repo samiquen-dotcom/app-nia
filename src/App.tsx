@@ -13,6 +13,7 @@ import { DebtsScreen } from './pages/DebtsScreen';
 import { ProfileScreen } from './pages/ProfileScreen';
 import { TravelScreen } from './pages/TravelScreen';
 import { DiaryScreen } from './pages/diary/DiaryScreen';
+import { NotesScreen } from './pages/NotesScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
@@ -43,6 +44,7 @@ function App() {
                 <Route path="/debts" element={<ProtectedRoute><DebtsScreen /></ProtectedRoute>} />
                 <Route path="/travel" element={<ProtectedRoute><TravelScreen /></ProtectedRoute>} />
                 <Route path="/diary" element={<ProtectedRoute><DiaryScreen /></ProtectedRoute>} />
+                <Route path="/notes" element={<ProtectedRoute><NotesScreen /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
               </Route>
               <Route path="*" element={

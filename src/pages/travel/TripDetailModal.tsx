@@ -139,7 +139,7 @@ export const TripDetailModal: React.FC<{
     return (
         <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
             <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-            <div className="relative w-full sm:max-w-2xl max-h-[100vh] sm:max-h-[90vh] flex flex-col bg-white dark:bg-[#1a0d10] rounded-t-3xl sm:rounded-3xl shadow-2xl">
+            <div className="relative w-full sm:max-w-2xl lg:max-w-6xl max-h-[100vh] sm:max-h-[95vh] flex flex-col bg-white dark:bg-[#1a0d10] rounded-t-3xl sm:rounded-3xl shadow-2xl">
                 {/* Header */}
                 <div className="flex-shrink-0 bg-white dark:bg-[#1a0d10] px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-slate-100 dark:border-[#5a2b35]/30">
                     <div className="flex items-center justify-between mb-2 sm:mb-3">
@@ -256,13 +256,13 @@ export const TripDetailModal: React.FC<{
                             <button
                                 key={t.key}
                                 onClick={() => setTab(t.key)}
-                                className={`flex-shrink-0 sm:flex-shrink min-w-[4.5rem] sm:min-w-0 py-2 px-2 sm:px-3 rounded-lg text-[10px] sm:text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 transition-all flex-1 sm:basis-0 ${tab === t.key
+                                className={`flex-shrink-0 sm:flex-shrink min-w-[4.5rem] sm:min-w-0 py-2 px-2 sm:px-3 lg:px-4 rounded-lg text-[10px] sm:text-xs lg:text-sm font-bold flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 transition-all flex-1 sm:basis-0 ${tab === t.key
                                     ? 'bg-white dark:bg-[#3d2830] text-pink-500 shadow-sm ring-1 ring-pink-200 dark:ring-pink-800'
                                     : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
                                     }`}
                             >
-                                <span className="material-symbols-outlined text-base sm:text-sm">{t.icon}</span>
-                                <span className="truncate">{t.label}</span>
+                                <span className="material-symbols-outlined text-base sm:text-sm lg:text-base">{t.icon}</span>
+                                <span className="truncate lg:whitespace-nowrap">{t.label}</span>
                             </button>
                         ))}
                     </div>

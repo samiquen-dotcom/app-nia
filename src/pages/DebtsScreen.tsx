@@ -50,6 +50,8 @@ export const DebtsScreen: React.FC = () => {
     const [showPayModal, setShowPayModal] = useState(false);
     const [debtToPay, setDebtToPay] = useState<Debt | null>(null);
     const [payAccountId, setPayAccountId] = useState('');
+    const [payToCardId, setPayToCardId] = useState('');
+    const [payToCardEnabled, setPayToCardEnabled] = useState(false);
     const [isPaying, setIsPaying] = useState(false);
 
     // Fetch accounts
@@ -160,6 +162,8 @@ export const DebtsScreen: React.FC = () => {
     const openPayModal = (debt: Debt) => {
         setDebtToPay(debt);
         setPayAccountId('');
+        setPayToCardId('');
+        setPayToCardEnabled(false);
         setShowPayModal(true);
     };
 
@@ -167,10 +171,17 @@ export const DebtsScreen: React.FC = () => {
         setDebtToPay(null);
         setShowPayModal(false);
         setIsPaying(false);
+        setPayToCardId('');
+        setPayToCardEnabled(false);
     };
 
     const confirmPayment = async () => {
         if (!user || !debtToPay || !payAccountId) return;
+        if (payToCardEnabled && !payToCardId) return;
+        if (payToCardEnabled && payToCardId === payAccountId) {
+            alert("La cuenta de origen y la tarjeta destino no pueden ser la misma.");
+            return;
+        }
         setIsPaying(true);
 
         try {
@@ -178,20 +189,37 @@ export const DebtsScreen: React.FC = () => {
                 const now = new Date();
                 return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
             };
-            
-            // 1. Create Finance Expense Transaction
-            const tx: Transaction = {
-                id: Date.now(),
-                type: 'expense',
-                accountId: payAccountId,
-                amount: debtToPay.amount,
-                category: 'Pago/Deuda',
-                emoji: '🧾',
-                description: `Pago: ${debtToPay.title}`,
-                dateISO: todayStr(),
-                date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }),
-            };
-            await FirestoreService.addTransaction(user.uid, tx);
+            const dateLabel = new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+
+            // 1. Crear movimiento en Finanzas
+            if (payToCardEnabled && payToCardId) {
+                // Pago a tarjeta de crédito: transferencia (resta origen, suma a tarjeta = restaura cupo)
+                const toCard = accounts.find(a => a.id === payToCardId);
+                await FirestoreService.addTransfer(user.uid, {
+                    id: Date.now(),
+                    type: 'transfer',
+                    fromAccountId: payAccountId,
+                    toAccountId: payToCardId,
+                    amount: debtToPay.amount,
+                    description: `Pago deuda: ${debtToPay.title}${toCard ? ` → ${toCard.name}` : ''}`,
+                    dateISO: todayStr(),
+                    date: dateLabel,
+                });
+            } else {
+                // Pago normal: gasto desde la cuenta origen
+                const tx: Transaction = {
+                    id: Date.now(),
+                    type: 'expense',
+                    accountId: payAccountId,
+                    amount: debtToPay.amount,
+                    category: 'Pago/Deuda',
+                    emoji: '🧾',
+                    description: `Pago: ${debtToPay.title}`,
+                    dateISO: todayStr(),
+                    date: dateLabel,
+                };
+                await FirestoreService.addTransaction(user.uid, tx);
+            }
 
             // 2. Update Debt
             let updatedDebts = [...debts];
@@ -515,7 +543,7 @@ export const DebtsScreen: React.FC = () => {
                             ¿Desde qué cuenta vas a pagar los <strong className="text-slate-800 dark:text-slate-200">{fmt(debtToPay.amount)}</strong> para <strong>{debtToPay.title}</strong>?
                         </p>
 
-                        <div className="space-y-3 max-h-[50vh] overflow-y-auto mb-6 scrollbar-hide pr-2">
+                        <div className="space-y-3 max-h-[35vh] overflow-y-auto mb-4 scrollbar-hide pr-2">
                             {accounts.map((acc: any) => (
                                 <button
                                     key={acc.id}
@@ -536,6 +564,53 @@ export const DebtsScreen: React.FC = () => {
                             ))}
                         </div>
 
+                        {/* Toggle: ¿Va a una tarjeta de crédito? */}
+                        <div className="mb-4 border-t border-slate-100 dark:border-white/10 pt-4">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setPayToCardEnabled(v => !v);
+                                    if (payToCardEnabled) setPayToCardId('');
+                                }}
+                                className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-900/40 text-left"
+                            >
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <span className="material-symbols-outlined text-violet-500 text-2xl">credit_card</span>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-bold text-slate-800 dark:text-slate-100">¿Va a una tarjeta de crédito?</p>
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400">Restaura el cupo de la tarjeta destino</p>
+                                    </div>
+                                </div>
+                                <span className={`flex-shrink-0 w-10 h-6 rounded-full p-0.5 transition-colors ${payToCardEnabled ? 'bg-violet-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                                    <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${payToCardEnabled ? 'translate-x-4' : ''}`} />
+                                </span>
+                            </button>
+
+                            {payToCardEnabled && (
+                                <div className="mt-3 space-y-2 max-h-[25vh] overflow-y-auto scrollbar-hide pr-2 animate-in fade-in slide-in-from-top-2">
+                                    <p className="text-[11px] uppercase font-bold text-slate-400 tracking-wide px-1">Tarjeta destino</p>
+                                    {accounts.filter((a: any) => a.id !== payAccountId).map((acc: any) => (
+                                        <button
+                                            key={acc.id}
+                                            onClick={() => setPayToCardId(acc.id)}
+                                            className={`w-full flex items-center justify-between p-3 rounded-2xl border-2 transition-all ${payToCardId === acc.id ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-900 dark:text-violet-100' : 'border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-[#1a0d10] hover:border-violet-200 text-slate-700 dark:text-slate-200'}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xl">{acc.emoji || '💳'}</span>
+                                                <div className="text-left">
+                                                    <p className="font-bold text-sm">{acc.name}</p>
+                                                    <p className="text-[11px] opacity-70">Saldo: {fmt(acc.balance ?? acc.initialBalance)}</p>
+                                                </div>
+                                            </div>
+                                            {payToCardId === acc.id && (
+                                                <span className="material-symbols-outlined text-violet-500">check_circle</span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
                         <div className="flex gap-3">
                             <button
                                 onClick={closePayModal}
@@ -546,7 +621,7 @@ export const DebtsScreen: React.FC = () => {
                             </button>
                             <button
                                 onClick={confirmPayment}
-                                disabled={!payAccountId || isPaying}
+                                disabled={!payAccountId || isPaying || (payToCardEnabled && !payToCardId)}
                                 className="flex-1 py-3 rounded-xl bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-200 dark:shadow-none disabled:opacity-50 transition-all flex justify-center items-center gap-2"
                             >
                                 {isPaying ? 'Pagando...' : 'Confirmar pago'}

@@ -106,10 +106,36 @@ export const VoiceRecorder: React.FC<Props> = ({ onSave, maxDurationMs = 90_000 
         waveformRef.current = [];
         transcriptRef.current = '';
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Constraints con noise suppression / echo cancellation / AGC para
+            // que la grabación en móvil suene como WhatsApp (no como una lata).
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 44100,
+                    channelCount: 1,
+                } as MediaTrackConstraints,
+            });
             streamRef.current = stream;
 
-            const recorder = new MediaRecorder(stream);
+            // Elegir el mejor mime type soportado por el navegador. iOS Safari
+            // no soporta webm; cae a audio/mp4 (AAC). Pedimos un bitrate decente.
+            const candidates = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/mp4;codecs=mp4a.40.2',
+                'audio/mp4',
+                'audio/ogg;codecs=opus',
+            ];
+            const supportedMime = candidates.find(t =>
+                typeof MediaRecorder !== 'undefined' &&
+                typeof (MediaRecorder as any).isTypeSupported === 'function' &&
+                (MediaRecorder as any).isTypeSupported(t)
+            );
+            const recorder = supportedMime
+                ? new MediaRecorder(stream, { mimeType: supportedMime, audioBitsPerSecond: 128_000 })
+                : new MediaRecorder(stream);
             recorderRef.current = recorder;
             chunksRef.current = [];
             recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
@@ -183,7 +209,9 @@ export const VoiceRecorder: React.FC<Props> = ({ onSave, maxDurationMs = 90_000 
         const durationMs = Date.now() - startTimeRef.current;
 
         recorder.onstop = async () => {
-            const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+            // Usar el mime type real del recorder (puede ser audio/mp4 en iOS).
+            const blobType = recorder.mimeType || chunksRef.current[0]?.type || 'audio/webm';
+            const blob = new Blob(chunksRef.current, { type: blobType });
 
             // Reject if too small (clicked record/stop too fast)
             if (blob.size < 1000) {

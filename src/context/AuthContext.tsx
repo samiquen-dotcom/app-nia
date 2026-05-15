@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { type User, onAuthStateChanged, signOut } from 'firebase/auth';
+import { type User, onAuthStateChanged, signOut, getRedirectResult } from 'firebase/auth';
 import { auth } from '../firebase';
 
 interface AuthContextType {
@@ -15,6 +15,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Safety-net: si veníamos de signInWithRedirect (fallback en navegadores
+        // in-app de WhatsApp/Instagram), procesar el resultado al montar.
+        // onAuthStateChanged también se disparará después, pero esto nos da
+        // mejor manejo de errores cuando sessionStorage queda inaccesible.
+        getRedirectResult(auth).catch(err => {
+            // Solo log; no interrumpe el flujo de auth normal.
+            if (err?.code && err.code !== 'auth/no-auth-event') {
+                console.warn('[Auth] getRedirectResult:', err.code, err.message);
+            }
+        });
+
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             setUser(user);
             setLoading(false);

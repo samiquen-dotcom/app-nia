@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { DiaryNote, NoteContext, VoiceClip, LoopPattern, AmbientType } from '../../types';
 import { VoiceRecorder, VoiceClipPlayer } from './VoiceRecorder';
 import { LoopStudio, LoopPreview } from './LoopStudio';
@@ -7,9 +7,10 @@ import { AmbientPlayer } from './AmbientPlayer';
 interface Props {
     context: NoteContext;
     onSave: (note: Omit<DiaryNote, 'id' | 'createdAt'>) => Promise<void>;
+    notes?: DiaryNote[]; // Para mostrar la biblioteca de loops ya guardados
 }
 
-export const FeelMode: React.FC<Props> = ({ context, onSave }) => {
+export const FeelMode: React.FC<Props> = ({ context, onSave, notes = [] }) => {
     const [title, setTitle] = useState('');
     const [voiceClip, setVoiceClip] = useState<VoiceClip | null>(null);
     const [loopPattern, setLoopPattern] = useState<LoopPattern | undefined>(undefined);
@@ -19,6 +20,14 @@ export const FeelMode: React.FC<Props> = ({ context, onSave }) => {
     const [saving, setSaving] = useState(false);
 
     const canSave = !!(voiceClip || loopPattern || body.trim());
+
+    // Biblioteca: notas previas que tienen loopPattern.
+    const savedLoops = useMemo(
+        () => notes
+            .filter(n => n.loopPattern && Array.isArray(n.loopPattern.steps) && n.loopPattern.steps.length > 0)
+            .slice(0, 8),
+        [notes]
+    );
 
     const handleSave = async () => {
         if (!canSave) return;
@@ -128,6 +137,39 @@ export const FeelMode: React.FC<Props> = ({ context, onSave }) => {
             </div>
 
             <AmbientPlayer value={ambient} onChange={setAmbient} />
+
+            {/* Biblioteca de loops: notas previas con loop guardado */}
+            {savedLoops.length > 0 && !showStudio && (
+                <div className="rounded-2xl bg-fuchsia-50/50 dark:bg-fuchsia-900/10 border border-fuchsia-100 dark:border-fuchsia-900/30 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <p className="text-[11px] uppercase font-extrabold text-fuchsia-500 tracking-wider">🎵 Mis loops guardados ({savedLoops.length})</p>
+                        <span className="text-[10px] text-slate-400">Toca uno para usarlo aquí</span>
+                    </div>
+                    <div className="space-y-2">
+                        {savedLoops.map(n => {
+                            const dateLabel = new Date(n.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+                            const noteCount = n.loopPattern?.steps?.reduce((acc, row) => acc + (Array.isArray(row) ? row.filter(Boolean).length : 0), 0) ?? 0;
+                            return (
+                                <div key={n.id} className="flex items-center gap-2 bg-white/70 dark:bg-[#2a1620]/50 rounded-xl px-3 py-2">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{n.title || 'Sin título'}</p>
+                                        <p className="text-[10px] text-slate-400">{n.loopPattern!.bpm} BPM · {noteCount} notas · {dateLabel}</p>
+                                    </div>
+                                    <button
+                                        onClick={() => { setLoopPattern(n.loopPattern); setShowStudio(false); }}
+                                        className="text-[10px] px-3 py-1.5 rounded-full bg-fuchsia-500 text-white font-bold shadow-sm active:scale-95"
+                                    >
+                                        Usar
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-3 italic">
+                        💡 Los loops viven dentro de cada entrada. Para tener un nuevo loop guardado, crea una entrada con loop y guárdala.
+                    </p>
+                </div>
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-1">
                 <button

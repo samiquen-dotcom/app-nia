@@ -6,7 +6,9 @@ import { useAuth } from '../context/AuthContext';
 import { FirestoreService, Features } from '../services/firestore';
 import { getPredictions, calculatePhase, getEnhancedBodyAlert, getDailyAffirmation, type EnhancedBodyAlert, type PhaseInfo } from '../utils/cycleLogic';
 import { todayStr, getCurrentWeekDates, getCurrentMonthKey } from '../utils/dateHelpers';
-import type { GymData, FoodData, GoalsData, PeriodData, DebtsData, Debt, WellnessData, Transaction, TravelData, Trip } from '../types';
+import { computeGoalProgress, sortGoalsByUrgency } from '../utils/goalsLogic';
+import { sessionSummary } from '../utils/gymLogic';
+import type { GymData, FoodData, GoalsData, Goal, PeriodData, DebtsData, Debt, WellnessData, FinanceData, Transaction, TravelData, Trip } from '../types';
 
 interface DashboardData {
     calories: number;
@@ -14,11 +16,20 @@ interface DashboardData {
     gymDone: boolean;
     gymGoal: number;
     gymWeeklyCompleted: number;
+    lastGymSummary?: string | null;  // resumen de la última sesión con detalle
     todaySpent: number;
     monthSpent: number;        // Gasto acumulado del mes (para contexto)
-    goalsTotal: number;
-    goalsDone: number;
+    goalsMonthTotal: number;   // Metas del mes actual
+    goalsMonthDone: number;    // Metas del mes ya logradas
+    topGoal?: {                // Meta más urgente para destacar en el widget
+        title: string;
+        label: string;         // ej. "8 / 12 días"
+        pct: number;
+        done: boolean;
+        overBudget?: boolean;
+    } | null;
     waterToday: number;
+    waterGoal: number;
     periodStatus?: {
         isActive: boolean;
         isDayMissing: boolean;
@@ -40,7 +51,7 @@ export const HomeScreen: React.FC = () => {
         weekday: 'long', day: 'numeric', month: 'long'
     });
     const [dashboard, setDashboard] = useState<DashboardData>({
-        calories: 0, calorieGoal: 2000, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, monthSpent: 0, goalsTotal: 0, goalsDone: 0, waterToday: 0, upcomingTrips: [],
+        calories: 0, calorieGoal: 2000, gymDone: false, gymGoal: 5, gymWeeklyCompleted: 0, todaySpent: 0, monthSpent: 0, goalsMonthTotal: 0, goalsMonthDone: 0, topGoal: null, waterToday: 0, waterGoal: 8, upcomingTrips: [],
     });
     const { user } = useAuth();
     const displayName = user?.displayName ? user.displayName.split(' ')[0] : 'Nia';
@@ -52,6 +63,30 @@ export const HomeScreen: React.FC = () => {
 
     // Afirmación por fase del ciclo (rota diariamente). Si no hay fase, usa lista genérica.
     const affirmation = getDailyAffirmation(dashboard.phase ?? null);
+
+    const handleQuickAddWater = async () => {
+        if (!user) return;
+        const today = todayStr();
+        const newTotal = Math.min(dashboard.waterToday + 1, 30);
+        // Optimistic UI update
+        setDashboard(prev => ({ ...prev, waterToday: newTotal }));
+        // Persist
+        try {
+            const wellnessRaw = await FirestoreService.getFeatureData(user.uid, Features.WELLNESS);
+            const wellness: any = wellnessRaw || { days: [] };
+            const days = Array.isArray(wellness.days) ? wellness.days : [];
+            const existing = days.find((d: any) => d.date === today);
+            const updatedDay = existing
+                ? { ...existing, glasses: newTotal }
+                : { date: today, glasses: newTotal, habits: [] };
+            const updatedDays = [updatedDay, ...days.filter((d: any) => d.date !== today)];
+            await FirestoreService.saveFeatureData(user.uid, Features.WELLNESS, { ...wellness, days: updatedDays });
+        } catch (e) {
+            console.error('Error saving quick water:', e);
+            // Revert on failure
+            setDashboard(prev => ({ ...prev, waterToday: dashboard.waterToday }));
+        }
+    };
 
 
 
@@ -125,6 +160,18 @@ export const HomeScreen: React.FC = () => {
                 gymWeeklyCompleted = weekDates.filter(date => gym.history.some(h => h.date === date)).length;
             }
 
+            // Última sesión de gym con detalle (para nugget de progresión en el widget)
+            let lastGymSummary: string | null = null;
+            if (gym?.history) {
+                const lastDetailed = [...gym.history]
+                    .filter(h => h.exercises && h.exercises.length > 0)
+                    .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+                if (lastDetailed) {
+                    const rtn = gym.customRoutines?.find(r => r.id === lastDetailed.workoutId);
+                    lastGymSummary = sessionSummary(lastDetailed, rtn?.label ?? 'Entrenamiento');
+                }
+            }
+
             // Finance: today's expenses + month accumulated (para contexto)
             const monthKey = getCurrentMonthKey(); // YYYY-MM
             const todaySpent = txData.transactions
@@ -134,13 +181,33 @@ export const HomeScreen: React.FC = () => {
                 ?.filter(t => t.type === 'expense' && t.dateISO?.startsWith(monthKey))
                 .reduce((sum, t) => sum + t.amount, 0) ?? 0;
 
-            // Goals completion
-            const goalsTotal = goals?.goals?.length ?? 0;
-            const goalsDone = goals?.goals?.filter(g => g.completed).length ?? 0;
+            // Goals: metas conectadas del mes actual con progreso calculado en vivo
+            const monthKey2 = getCurrentMonthKey();
+            const goalCtx = {
+                gym: gym ?? null,
+                wellness: wellness ?? null,
+                finance: (_ as FinanceData | null) ?? null,
+                period: period ?? null,
+            };
+            const allGoals = ((goals?.goals ?? []) as Goal[]).filter(g => g.type);
+            const monthGoals = allGoals.filter(g => g.period === monthKey2);
+            const goalsMonthTotal = monthGoals.length;
+            const goalsMonthDone = monthGoals.filter(g => computeGoalProgress(g, goalCtx).done).length;
+            // Meta destacada: la conectada sin terminar más cercana a la meta
+            const sortedGoals = sortGoalsByUrgency(monthGoals, goalCtx);
+            const topGoalRaw = sortedGoals.find(g => g.type === 'connected' && !computeGoalProgress(g, goalCtx).done)
+                ?? sortedGoals.find(g => g.type === 'connected')
+                ?? sortedGoals[0];
+            let topGoal: DashboardData['topGoal'] = null;
+            if (topGoalRaw) {
+                const p = computeGoalProgress(topGoalRaw, goalCtx);
+                topGoal = { title: topGoalRaw.title, label: p.label, pct: p.pct, done: p.done, overBudget: p.overBudget };
+            }
 
             // Wellness: today's water intake
             const todayWellness = wellness?.days?.find(d => d.date === today);
             const waterToday = todayWellness?.glasses ?? 0;
+            const waterGoal = wellness?.waterGoal ?? 8;
 
             // Cycle Status Logic
             let periodStatus = undefined;
@@ -217,14 +284,10 @@ export const HomeScreen: React.FC = () => {
             const todayEntry = period?.dailyEntries?.[today] ?? null;
             const bodyAlert = getEnhancedBodyAlert(phase, todayEntry);
 
-            setDashboard({ calories, calorieGoal, gymDone, gymGoal, gymWeeklyCompleted, todaySpent, monthSpent, goalsTotal, goalsDone, waterToday, periodStatus, bodyAlert, phase, pendingReviewDate, upcomingTrips });
+            setDashboard({ calories, calorieGoal, gymDone, gymGoal, gymWeeklyCompleted, lastGymSummary, todaySpent, monthSpent, goalsMonthTotal, goalsMonthDone, topGoal, waterToday, waterGoal, periodStatus, bodyAlert, phase, pendingReviewDate, upcomingTrips });
 
         });
     }, [user, refresh]);
-
-    const goalsProgress = dashboard.goalsTotal > 0
-        ? Math.round((dashboard.goalsDone / dashboard.goalsTotal) * 100)
-        : 0;
 
     return (
         <div className="pb-12">
@@ -460,25 +523,46 @@ export const HomeScreen: React.FC = () => {
                     )}
 
                     {/* Goals Card */}
-                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <button
+                        onClick={() => navigate('/goals')}
+                        className="text-left bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow active:scale-[0.99]"
+                    >
                         <div className="flex justify-between items-start">
                             <div className="bg-rose-100 p-2 rounded-full text-rose-500">
-                                <span className="material-symbols-outlined text-lg">check_circle</span>
+                                <span className="material-symbols-outlined text-lg">emoji_events</span>
                             </div>
-                            <span className="text-xl font-bold text-slate-800 dark:text-slate-100">
-                                {dashboard.goalsDone}<span className="text-sm text-slate-400 font-normal">/{dashboard.goalsTotal}</span>
-                            </span>
+                            {dashboard.goalsMonthTotal > 0 && (
+                                <span className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                                    {dashboard.goalsMonthDone}<span className="text-sm text-slate-400 font-normal">/{dashboard.goalsMonthTotal}</span>
+                                </span>
+                            )}
                         </div>
                         <div>
                             <p className="font-bold text-slate-700 dark:text-slate-200">Metas</p>
-                            <p className="text-[10px] text-rose-400 font-bold">
-                                {dashboard.goalsTotal === 0 ? 'Agrega metas ✨' : goalsProgress === 100 ? '¡Todo listo! 🎉' : `${goalsProgress}% completado`}
-                            </p>
-                            <div className="w-full bg-rose-100 h-1.5 rounded-full mt-2">
-                                <div className="bg-rose-400 h-1.5 rounded-full transition-all" style={{ width: `${goalsProgress}%` }}></div>
-                            </div>
+                            {dashboard.topGoal ? (
+                                <>
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                                        {dashboard.topGoal.title}
+                                    </p>
+                                    <p className={`text-[11px] font-bold ${dashboard.topGoal.overBudget ? 'text-rose-500' : dashboard.topGoal.done ? 'text-emerald-500' : 'text-rose-400'}`}>
+                                        {dashboard.topGoal.overBudget
+                                            ? `⚠️ ${dashboard.topGoal.label}`
+                                            : dashboard.topGoal.done
+                                                ? `¡Lograda! 🎉 ${dashboard.topGoal.label}`
+                                                : dashboard.topGoal.label}
+                                    </p>
+                                    <div className="w-full bg-rose-100 dark:bg-rose-900/20 h-1.5 rounded-full mt-2 overflow-hidden">
+                                        <div
+                                            className={`h-1.5 rounded-full transition-all ${dashboard.topGoal.overBudget ? 'bg-rose-500' : 'bg-rose-400'}`}
+                                            style={{ width: `${dashboard.topGoal.pct}%` }}
+                                        ></div>
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="text-[10px] text-rose-400 font-bold">Agrega metas ✨</p>
+                            )}
                         </div>
-                    </div>
+                    </button>
 
                     {/* Calories Card */}
                     {(() => {
@@ -530,7 +614,10 @@ export const HomeScreen: React.FC = () => {
                     })()}
 
                     {/* Gym Card */}
-                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-shadow">
+                    <button
+                        onClick={() => navigate('/gym')}
+                        className="text-left bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-shadow active:scale-[0.99]"
+                    >
                         <div className="flex justify-between items-start z-10">
                             <div className="bg-emerald-100 p-2 rounded-full text-emerald-600">
                                 <span className="material-symbols-outlined text-lg">fitness_center</span>
@@ -541,9 +628,15 @@ export const HomeScreen: React.FC = () => {
                         </div>
                         <div className="z-10 mt-2">
                             <p className="font-bold text-slate-700 dark:text-slate-200">Gym</p>
-                            <p className="text-[10px] text-slate-400 font-medium">
-                                Esta semana: <span className="font-bold text-emerald-500">{dashboard.gymWeeklyCompleted >= dashboard.gymGoal ? '¡Meta! ✨' : 'En progreso'}</span>
-                            </p>
+                            {dashboard.lastGymSummary ? (
+                                <p className="text-[10px] text-slate-400 font-medium truncate">
+                                    Última: <span className="font-bold text-emerald-500">{dashboard.lastGymSummary}</span>
+                                </p>
+                            ) : (
+                                <p className="text-[10px] text-slate-400 font-medium">
+                                    Esta semana: <span className="font-bold text-emerald-500">{dashboard.gymWeeklyCompleted >= dashboard.gymGoal ? '¡Meta! ✨' : 'En progreso'}</span>
+                                </p>
+                            )}
                             <div className="w-full bg-emerald-50 dark:bg-black/20 h-1.5 rounded-full mt-2 overflow-hidden">
                                 <div
                                     className="bg-emerald-400 h-1.5 rounded-full transition-all"
@@ -552,7 +645,7 @@ export const HomeScreen: React.FC = () => {
                             </div>
                         </div>
                         <div className="absolute -bottom-4 -right-4 bg-emerald-50 w-24 h-24 rounded-full opacity-50 z-0 group-hover:scale-110 transition-transform"></div>
-                    </div>
+                    </button>
 
                     {/* Finance Card — gasto del día con contexto del mes */}
                     {(() => {
@@ -611,11 +704,15 @@ export const HomeScreen: React.FC = () => {
                     })()}
 
                     {/* Wellness / Water Card */}
-                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <div className="bg-white dark:bg-[#2d1820] p-4 rounded-3xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col justify-between hover:shadow-md transition-shadow relative">
                         <div className="flex justify-between items-start">
-                            <div className="bg-sky-100 p-2 rounded-full text-sky-500">
+                            <button
+                                onClick={() => navigate('/wellness')}
+                                className="bg-sky-100 p-2 rounded-full text-sky-500 hover:scale-110 transition-transform"
+                                aria-label="Ir a bienestar"
+                            >
                                 <span className="material-symbols-outlined text-lg">water_drop</span>
-                            </div>
+                            </button>
                             <span className="text-xl font-bold text-slate-800 dark:text-slate-100">
                                 💧{dashboard.waterToday}
                             </span>
@@ -623,14 +720,24 @@ export const HomeScreen: React.FC = () => {
                         <div>
                             <p className="font-bold text-slate-700 dark:text-slate-200">Agua</p>
                             <p className="text-[10px] text-sky-400 font-bold">
-                                {dashboard.waterToday === 0 ? 'Empieza hoy 💧' : dashboard.waterToday >= 8 ? '¡Meta cumplida! 🎉' : `${dashboard.waterToday}/8 vasos`}
+                                {dashboard.waterToday === 0
+                                    ? 'Empieza hoy 💧'
+                                    : dashboard.waterToday >= dashboard.waterGoal
+                                        ? '¡Meta cumplida! 🎉'
+                                        : `${dashboard.waterToday}/${dashboard.waterGoal} vasos`}
                             </p>
                             <div className="w-full bg-sky-100 h-1.5 rounded-full mt-2 overflow-hidden">
                                 <div
                                     className="bg-sky-400 h-1.5 rounded-full transition-all"
-                                    style={{ width: `${Math.min((dashboard.waterToday / 8) * 100, 100)}%` }}
+                                    style={{ width: `${Math.min((dashboard.waterToday / dashboard.waterGoal) * 100, 100)}%` }}
                                 ></div>
                             </div>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); handleQuickAddWater(); }}
+                                className="mt-2 w-full text-[10px] font-bold py-1.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-sm active:scale-95 transition-all"
+                            >
+                                + 1 vaso
+                            </button>
                         </div>
                     </div>
 

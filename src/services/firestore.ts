@@ -37,9 +37,48 @@ export const Features = {
     MOOD: 'mood',
     TRAVEL: 'travel',
     DIARY: 'diary',
+    NOTES: 'notes',
 };
 
 const getUserDoc = (userId: string) => doc(db, 'users', userId);
+
+// ─── Diary serialization helpers ─────────────────────────────────────────────
+// Firestore no permite arrays anidados (boolean[][]). El loop pattern usa
+// `steps: boolean[][]`; lo codificamos como `string[]` de bits ("10101010")
+// al guardar y revertimos al leer. Mantiene el modelo en memoria intacto.
+const encodeDiaryNote = <T extends { loopPattern?: any }>(note: T): T => {
+    if (!note || !note.loopPattern) return note;
+    const lp = note.loopPattern;
+    if (!Array.isArray(lp.steps)) return note;
+    // Si alguna fila ya es string, asumir que está codificado y no tocar.
+    if (lp.steps.length > 0 && typeof lp.steps[0] === 'string') return note;
+    return {
+        ...note,
+        loopPattern: {
+            ...lp,
+            steps: lp.steps.map((row: any) =>
+                Array.isArray(row) ? row.map((b: any) => (b ? '1' : '0')).join('') : row
+            ),
+        },
+    };
+};
+
+const decodeDiaryNote = (raw: any): DiaryNote => {
+    if (!raw || !raw.loopPattern) return raw as DiaryNote;
+    const lp = raw.loopPattern;
+    if (!Array.isArray(lp.steps)) return raw as DiaryNote;
+    // Caso codificado: array de strings → array de booleans
+    if (lp.steps.length > 0 && typeof lp.steps[0] === 'string') {
+        return {
+            ...raw,
+            loopPattern: {
+                ...lp,
+                steps: lp.steps.map((s: string) => Array.from(s).map(c => c === '1')),
+            },
+        };
+    }
+    return raw as DiaryNote;
+};
 
 export const FirestoreService = {
     // Inicializar usuario si es nuevo
@@ -494,7 +533,7 @@ export const FirestoreService = {
             const q = query(notesRef, orderBy('createdAt', 'desc'));
             const snap = await getDocs(q);
             const notes: DiaryNote[] = [];
-            snap.forEach(d => notes.push(d.data() as DiaryNote));
+            snap.forEach(d => notes.push(decodeDiaryNote(d.data())));
             return notes;
         } catch (e) {
             console.error('Error fetching diary notes:', e);
@@ -504,12 +543,12 @@ export const FirestoreService = {
 
     addDiaryNote: async (userId: string, note: DiaryNote): Promise<void> => {
         const noteRef = doc(db, `users/${userId}/features/${Features.DIARY}/notes`, note.id);
-        await setDoc(noteRef, note);
+        await setDoc(noteRef, encodeDiaryNote(note));
     },
 
     updateDiaryNote: async (userId: string, noteId: string, partial: Partial<DiaryNote>): Promise<void> => {
         const noteRef = doc(db, `users/${userId}/features/${Features.DIARY}/notes`, noteId);
-        await setDoc(noteRef, partial, { merge: true });
+        await setDoc(noteRef, encodeDiaryNote(partial as any), { merge: true });
     },
 
     deleteDiaryNote: async (userId: string, noteId: string): Promise<void> => {
@@ -543,7 +582,7 @@ export const FirestoreService = {
         const notesCol = collection(db, `users/${userId}/features/${Features.DIARY}/notes`);
         for (const n of legacyNotes) {
             if (!n.id) continue;
-            batch.set(doc(notesCol, n.id), n);
+            batch.set(doc(notesCol, n.id), encodeDiaryNote(n));
             opCount++;
             if (opCount >= 450) {
                 await batch.commit();

@@ -73,23 +73,86 @@ export interface DebtsData {
     items: Debt[];
 }
 
+// ─── Notes / Arreglos ─────────────────────────────────────────────────────────
+export type NotePriority = 'low' | 'medium' | 'high';
+
+export interface Note {
+    id: string;
+    title: string;
+    description?: string;
+    priority: NotePriority;
+    done: boolean;
+    createdAt: number; // epoch ms
+    updatedAt: number;
+}
+
+export interface NotesData {
+    items: Note[];
+}
+
 // ─── Gym ──────────────────────────────────────────────────────────────────────
+// Tipo de ejercicio: define qué campos pide el registro detallado.
+export type ExerciseKind = 'strength' | 'cardio' | 'other';
+
+// Ejercicio dentro de una plantilla de rutina.
+export interface RoutineExercise {
+    id: string;
+    name: string;              // "Sentadilla", "Trote", etc.
+    kind: ExerciseKind;        // strength = reps+peso, cardio = duración/distancia
+}
+
 export interface GymRoutine {
     id: string;
     icon: string;
     label: string;
+    exercises?: RoutineExercise[]; // opcional — si está vacío la rutina sigue siendo solo etiqueta
 }
 
-export interface GymEntry {
-    date: string;     // YYYY-MM-DD
-    workoutId: string;
+// Una serie realizada de un ejercicio.
+export interface ExerciseSet {
+    reps?: number;
+    weight?: number;           // kg (ejercicios de fuerza)
+    durationMin?: number;      // minutos (cardio)
+    distanceKm?: number;       // km (cardio)
+}
+
+// El registro de un ejercicio dentro de una sesión.
+export interface SessionExercise {
+    exerciseId: string;
+    name: string;              // snapshot del nombre (sobrevive si se borra de la plantilla)
+    kind: ExerciseKind;
+    sets: ExerciseSet[];
+}
+
+// Una sesión de gym. Reemplaza a GymEntry pero es un superconjunto:
+// date + workoutId siguen siendo obligatorios → las entradas viejas son válidas.
+export interface GymSession {
+    date: string;              // YYYY-MM-DD
+    workoutId: string;         // id de la rutina
+    exercises?: SessionExercise[]; // detalle opcional
+    durationMin?: number;          // duración total opcional
+    notes?: string;                // notas opcionales
+}
+
+// Alias legacy — algunas partes del código todavía importan GymEntry.
+export type GymEntry = GymSession;
+
+// Medida corporal puntual.
+export interface BodyMeasurement {
+    id: string;
+    date: string;              // YYYY-MM-DD
+    weight?: number;           // kg
+    waist?: number;            // cm cintura
+    hip?: number;              // cm cadera
+    notes?: string;
 }
 
 export interface GymData {
-    goalDaysPerWeek: number; // Configurable goal, default 5
-    streak: number; // Legacy, kept for compatibility
-    history: GymEntry[];
+    goalDaysPerWeek: number;   // Meta configurable, default 5
+    streak: number;            // Legacy, se mantiene por compatibilidad
+    history: GymSession[];
     customRoutines: GymRoutine[];
+    measurements?: BodyMeasurement[]; // historial de medidas corporales
 }
 
 // ─── Period ───────────────────────────────────────────────────────────────────
@@ -145,9 +208,11 @@ export interface WellnessData {
     days: WellnessDay[];
     customHabits?: CustomHabit[];     // Hábitos editables. Si está undefined, se inicializa con seed.
     timerSessions?: TimerSession[];   // Historial reciente de sesiones (últimas 60).
+    waterGoal?: number;               // Meta diaria de vasos (default 8).
 }
 
 // ─── Goals ────────────────────────────────────────────────────────────────────
+// Legacy: meta vieja (solo texto + checkbox). Se migra a Goal al cargar.
 export interface GoalItem {
     id: number;
     text: string;
@@ -161,10 +226,44 @@ export interface MediaItem {
     status: 'watching' | 'finished' | 'pending';
 }
 
+// Métricas que la app ya mide y que una meta conectada puede leer automáticamente.
+export type GoalMetric =
+    | 'gym_days'             // días que fue al gym en el mes
+    | 'water_days'           // días que cumplió la meta de agua
+    | 'meditation_sessions'  // sesiones de respiración/pomodoro completadas
+    | 'sleep_nights'         // noches con 7h+ de sueño
+    | 'savings'              // ahorro del mes (ingresos - gastos)
+    | 'spending_cap'         // gasto del mes por debajo de un tope (inverso)
+    | 'cycle_logging';       // días del mes con el ciclo registrado
+
+export type GoalType = 'connected' | 'manual';
+
+export interface Goal {
+    id: string;
+    type: GoalType;
+    title: string;            // texto editable, ej. "Ir al gym 12 veces"
+    period: string;           // 'YYYY-MM' — mes al que pertenece la meta
+    createdAt: number;
+    // Conectadas:
+    metric?: GoalMetric;
+    target?: number;          // objetivo numérico
+    // Manuales:
+    completed?: boolean;
+    deadline?: string;        // YYYY-MM-DD opcional
+    celebrated?: boolean;     // ya se mostró la micro-celebración
+}
+
+export interface WishlistItem {
+    id: number;
+    text: string;
+    completed: boolean;
+    price?: number;           // precio opcional (para metas de ahorro futuras)
+}
+
 export interface GoalsData {
-    goals: GoalItem[];
-    wishlist: GoalItem[];
-    media: MediaItem[];
+    goals: Goal[];
+    wishlist: WishlistItem[];
+    media?: MediaItem[];      // legacy — ya no se muestra en la pantalla
 }
 
 // ─── Mood ─────────────────────────────────────────────────────────────────────

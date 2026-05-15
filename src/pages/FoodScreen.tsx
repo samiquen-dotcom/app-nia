@@ -688,13 +688,15 @@ export const FoodScreen: React.FC = () => {
             </div>
 
             {/* ── Botón Flotante Registrar Comida ───────────────────────────── */}
-            <div className="fixed bottom-28 sm:bottom-32 left-1/2 transform -translate-x-1/2 z-[60]">
+            <div className="fixed bottom-28 right-5 sm:bottom-32 sm:right-8 lg:bottom-8 lg:right-10 z-[60]">
                 <button
                     onClick={handleOpenRegisterModal}
-                    className="flex items-center gap-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white px-6 py-4 rounded-full shadow-lg shadow-emerald-500/30 transition-all hover:-translate-y-1 active:scale-95"
+                    aria-label="Registrar Comida"
+                    title="Registrar Comida"
+                    className="flex items-center justify-center gap-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-full shadow-lg shadow-emerald-500/30 transition-all hover:-translate-y-1 active:scale-95 w-14 h-14 lg:w-auto lg:h-auto lg:px-6 lg:py-4"
                 >
-                    <span className="material-symbols-outlined text-xl">add_circle</span>
-                    <span className="font-bold text-base">Registrar Comida</span>
+                    <span className="material-symbols-outlined text-2xl lg:text-xl">add</span>
+                    <span className="font-bold text-base hidden lg:inline">Registrar Comida</span>
                 </button>
             </div>
 

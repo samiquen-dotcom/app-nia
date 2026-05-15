@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithPopup } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { FirestoreService } from '../services/firestore';
@@ -25,9 +25,27 @@ export const LoginScreen: React.FC = () => {
     const handleLogin = async () => {
         setLoading(true);
         try {
+            // Popup-first (mejor UX y compatible con PWAs instaladas).
             await signInWithPopup(auth, googleProvider);
             setLoading(false);
-        } catch (error) {
+        } catch (error: any) {
+            // Fallback a redirect cuando el popup falla — típico en navegadores
+            // in-app de WhatsApp / Instagram en iOS y en PWAs con storage
+            // particionado. signInWithRedirect maneja esos contextos mejor.
+            const code = error?.code || '';
+            const isPopupBlocked = code === 'auth/popup-blocked'
+                || code === 'auth/popup-closed-by-user'
+                || code === 'auth/operation-not-supported-in-this-environment'
+                || code === 'auth/cancelled-popup-request'
+                || code === 'auth/web-storage-unsupported';
+            if (isPopupBlocked) {
+                try {
+                    await signInWithRedirect(auth, googleProvider);
+                    return; // Página se va a redirigir; loading se mantiene
+                } catch (redirectError) {
+                    console.error('Login redirect failed', redirectError);
+                }
+            }
             console.error("Login failed", error);
             alert("Error al iniciar sesión. Intenta de nuevo.");
             setLoading(false);

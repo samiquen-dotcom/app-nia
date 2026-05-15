@@ -196,6 +196,25 @@ export const LoopStudio: React.FC<Props> = ({ value, onChange }) => {
     const [playing, setPlaying] = useState(false);
     const [currentStep, setCurrentStep] = useState(-1);
     const [panel, setPanel] = useState<PanelView>(null);
+    // Pagination en móvil: 0 = primer compás (0-15), 1 = segundo compás (16-31).
+    const [barView, setBarView] = useState<0 | 1>(0);
+    // Detectar móvil (< 640px = breakpoint sm de Tailwind) para paginar la grilla.
+    const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches);
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const mq = window.matchMedia('(max-width: 639px)');
+        const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+        mq.addEventListener('change', handler);
+        return () => mq.removeEventListener('change', handler);
+    }, []);
+    // Pasos a renderizar: en móvil mostramos solo 16 (el compás seleccionado), en >=sm mostramos los 32.
+    const stepsToRender = useMemo(() => {
+        if (isMobile) {
+            const start = barView * 16;
+            return Array.from({ length: 16 }, (_, i) => start + i);
+        }
+        return Array.from({ length: STEPS }, (_, i) => i);
+    }, [isMobile, barView]);
 
     const synthsRef = useRef<{
         kick?: Tone.MembraneSynth;
@@ -451,16 +470,35 @@ export const LoopStudio: React.FC<Props> = ({ value, onChange }) => {
                 <PresetsPanel onPick={loadPreset} />
             )}
 
-            {/* ── Grid de pads × pasos (con scroll horizontal en mobile) ── */}
+            {/* ── Bar toggle (solo móvil): paginamos 32 pasos en 2 compases de 16 ─ */}
+            <div className="sm:hidden flex items-center justify-between mb-2">
+                <div className="flex gap-1 bg-white/60 dark:bg-[#2d1820] rounded-full p-1">
+                    {[0, 1].map(b => (
+                        <button
+                            key={b}
+                            onClick={() => setBarView(b as 0 | 1)}
+                            className={`px-3 py-1 rounded-full text-[10px] font-extrabold transition-colors ${barView === b ? 'bg-fuchsia-500 text-white shadow-sm' : 'text-fuchsia-500'}`}
+                        >
+                            Compás {b + 1}
+                        </button>
+                    ))}
+                </div>
+                <p className="text-[10px] text-slate-400">Toca para activar / Pasa entre compases</p>
+            </div>
+
+            {/* ── Grid de pads × pasos ─────────────────────────────────────
+                Móvil: muestra 16 pasos (1 compás), con paginación arriba.
+                Tablet/PC: muestra los 32 pasos completos con scroll horizontal solo si hace falta.
+            */}
             <div className="overflow-x-auto -mx-1 px-1">
-                <div className="space-y-1" style={{ minWidth: 360 }}>
+                <div className="space-y-1 min-w-full sm:min-w-[600px]">
                     {/* Marca de compás (cada 4 pasos) */}
                     <div className="flex items-center gap-1 sticky top-0">
-                        <div className="w-12 flex-shrink-0" />
-                        <div className="flex-1 grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${STEPS}, minmax(0, 1fr))` }}>
-                            {Array.from({ length: STEPS }).map((_, i) => (
-                                <div key={i} className={`text-[8px] text-center font-mono ${i % 4 === 0 ? 'text-fuchsia-400 font-bold' : 'text-slate-300 dark:text-slate-600'}`}>
-                                    {i % 4 === 0 ? Math.floor(i / 4) + 1 : '·'}
+                        <div className="w-12 sm:w-14 flex-shrink-0" />
+                        <div className="flex-1 grid gap-[3px]" style={{ gridTemplateColumns: `repeat(${stepsToRender.length}, minmax(0, 1fr))` }}>
+                            {stepsToRender.map((stepIdx) => (
+                                <div key={stepIdx} className={`text-[9px] text-center font-mono ${stepIdx % 4 === 0 ? 'text-fuchsia-400 font-bold' : 'text-slate-300 dark:text-slate-600'}`}>
+                                    {stepIdx % 4 === 0 ? Math.floor((stepIdx % 16) / 4) + 1 : '·'}
                                 </div>
                             ))}
                         </div>
@@ -471,16 +509,17 @@ export const LoopStudio: React.FC<Props> = ({ value, onChange }) => {
                             <div key={pad.id} className="flex items-center gap-1">
                                 <button
                                     onClick={() => toggleMute(pad.id)}
-                                    className={`w-12 flex-shrink-0 flex items-center gap-1 px-1.5 py-1 rounded-md text-left transition-opacity
+                                    className={`w-12 sm:w-14 flex-shrink-0 flex flex-col items-center gap-0.5 px-1 py-1 rounded-md text-left transition-opacity
                                         ${muted ? 'opacity-30' : 'opacity-100'}
                                         hover:bg-white/50 dark:hover:bg-white/5`}
                                     title={muted ? 'Activar' : 'Mutear'}
                                 >
-                                    <span className="text-sm leading-none">{pad.emoji}</span>
-                                    <span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 uppercase">{pad.name}</span>
+                                    <span className="text-base leading-none">{pad.emoji}</span>
+                                    <span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 uppercase truncate w-full text-center">{pad.name}</span>
                                 </button>
-                                <div className="flex-1 grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${STEPS}, minmax(0, 1fr))` }}>
-                                    {pattern.steps[pad.id].map((on, stepIdx) => {
+                                <div className="flex-1 grid gap-[3px]" style={{ gridTemplateColumns: `repeat(${stepsToRender.length}, minmax(0, 1fr))` }}>
+                                    {stepsToRender.map((stepIdx) => {
+                                        const on = pattern.steps[pad.id]?.[stepIdx];
                                         const isCurrent = stepIdx === currentStep;
                                         const beat = stepIdx % 4 === 0;
                                         const halfBar = stepIdx === STEPS / 2;
@@ -488,12 +527,12 @@ export const LoopStudio: React.FC<Props> = ({ value, onChange }) => {
                                             <button
                                                 key={stepIdx}
                                                 onClick={() => toggleStep(pad.id, stepIdx)}
-                                                className={`aspect-square min-h-[18px] rounded-sm transition-all
+                                                className={`aspect-square min-h-[22px] sm:min-h-[18px] rounded-md transition-all
                                                     ${on ? `${pad.color} shadow-sm` : beat ? `${pad.dim}` : 'bg-white/40 dark:bg-white/5'}
                                                     ${muted && on ? 'opacity-40' : ''}
                                                     ${isCurrent ? 'ring-2 ring-pink-400 ring-offset-1 ring-offset-rose-50 dark:ring-offset-[#2a1620]' : ''}
                                                     ${halfBar ? 'border-l border-fuchsia-300/40' : ''}
-                                                    hover:opacity-90
+                                                    hover:opacity-90 active:scale-95
                                                 `}
                                                 aria-label={`${pad.name} step ${stepIdx + 1}`}
                                             />
@@ -537,9 +576,10 @@ export const LoopStudio: React.FC<Props> = ({ value, onChange }) => {
                     <button
                         onClick={save}
                         disabled={noteCount === 0}
+                        title="Lo adjunta a esta entrada. Guarda la entrada para que persista."
                         className="text-xs px-3 py-1.5 rounded-full bg-fuchsia-500 text-white font-bold disabled:opacity-40 shadow-sm"
                     >
-                        Guardar loop
+                        Listo, usar este loop
                     </button>
                     {value && (
                         <button

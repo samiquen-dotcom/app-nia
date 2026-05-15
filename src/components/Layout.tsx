@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 import { BottomNav } from './BottomNav';
+import { Sidebar } from './Sidebar';
 import { WhatsNewModal } from './WhatsNewModal';
 import { useTheme } from '../context/ThemeContext';
 
@@ -9,14 +10,16 @@ export const Layout: React.FC = () => {
 
     return (
         <div className={isDark ? 'dark' : ''}>
-            <div className="min-h-screen bg-background-light dark:bg-[#1a0d10] text-text-main dark:text-[#f5e8eb] flex flex-col items-center">
-                {/* Main content container */}
-                <div className="w-full max-w-7xl min-h-screen bg-white dark:bg-[#231218] shadow-xl relative pb-24 mx-auto">
+            <div className="min-h-screen bg-background-light dark:bg-[#1a0d10] text-text-main dark:text-[#f5e8eb]">
+                {/* Sidebar (solo desktop) */}
+                <Sidebar />
 
-
-
-                    <Outlet />
-                    <BottomNav />
+                {/* Main content */}
+                <div className="lg:pl-64 min-h-screen">
+                    <div className="bg-white dark:bg-[#231218] shadow-xl lg:shadow-none min-h-screen relative pb-24 lg:pb-12 mx-auto max-w-7xl lg:max-w-none">
+                        <Outlet />
+                        <BottomNav />
+                    </div>
                 </div>
             </div>
 

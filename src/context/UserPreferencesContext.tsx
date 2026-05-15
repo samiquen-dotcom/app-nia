@@ -27,6 +27,7 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
     { id: 'goals', path: '/goals', icon: 'stars', label: 'Metas', enabled: true },
     { id: 'travel', path: '/travel', icon: 'flight', label: 'Viajes', enabled: true },
     { id: 'diary', path: '/diary', icon: 'auto_stories', label: 'Diario', enabled: true },
+    { id: 'notes', path: '/notes', icon: 'sticky_note_2', label: 'Notas', enabled: true },
 ];
 
 interface UserPreferencesContextType {

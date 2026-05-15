@@ -152,7 +152,7 @@ export const DiaryScreen: React.FC = () => {
 
             {/* Active mode */}
             {mode === 'pensar' && <ThinkMode context={context} onSave={handleSave} />}
-            {mode === 'sentir' && <FeelMode  context={context} onSave={handleSave} />}
+            {mode === 'sentir' && <FeelMode  context={context} onSave={handleSave} notes={notes} />}
             {mode === 'crear'  && <CreateMode context={context} onSave={handleSave} />}
             {mode === 'historia' && (
                 <ConstellationView

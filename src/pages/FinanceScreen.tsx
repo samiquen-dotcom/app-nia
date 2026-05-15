@@ -1074,7 +1074,7 @@ export const FinanceScreen: React.FC = () => {
             {showAdd && (
                 <div className="fixed top-0 left-0 right-0 bottom-0 z-[70] flex flex-col justify-end sm:justify-center items-center overflow-hidden">
                     <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity" onClick={() => setShowAdd(false)} />
-                    <div className="relative w-full max-w-md bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300 pointer-events-auto">
+                    <div className="relative w-full max-w-md lg:max-w-3xl bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300 pointer-events-auto">
 
                         {/* Top spacing to avoid cutout on some mobile browsers */}
                         <div className="pt-2 sm:pt-0" />
@@ -1126,7 +1126,7 @@ export const FinanceScreen: React.FC = () => {
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">
                                     {txType === 'expense' ? '¿De dónde sale?' : '¿A qué cuenta entra?'}
                                 </label>
-                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
+                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible scrollbar-hide pb-1">
                                     {visibleAccounts.map(acc => {
                                         const meta = getAccountMeta(acc.id);
                                         const selected = txAccount === acc.id;
@@ -1156,7 +1156,7 @@ export const FinanceScreen: React.FC = () => {
                                         <span className="material-symbols-outlined text-xs">add</span> Nueva
                                     </button>
                                 </div>
-                                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 sm:gap-2">
+                                <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-8 gap-1.5 sm:gap-2">
                                     {allCats.map(cat => {
                                         const selected = txCat === cat.label;
                                         const isCustom = customCats.some(c => c.label === cat.label);
@@ -1221,7 +1221,7 @@ export const FinanceScreen: React.FC = () => {
             {showTransfer && (
                 <div className="fixed top-0 left-0 right-0 bottom-0 z-[70] flex flex-col justify-end sm:justify-center items-center overflow-hidden">
                     <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity" onClick={() => setShowTransfer(false)} />
-                    <div className="relative w-full max-w-md bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300 pointer-events-auto">
+                    <div className="relative w-full max-w-md lg:max-w-3xl bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300 pointer-events-auto">
                         <div className="pt-2 sm:pt-0" />
                         <div className="flex flex-col items-center pt-3 pb-1 border-b border-slate-50 dark:border-white/5">
                             <div className="w-10 h-1 flex-shrink-0 rounded-full bg-slate-200 dark:bg-slate-600 mb-2" />
@@ -1255,7 +1255,7 @@ export const FinanceScreen: React.FC = () => {
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">
                                     📤 Cuenta de origen
                                 </label>
-                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
+                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible scrollbar-hide pb-1">
                                     {visibleAccounts.map(acc => {
                                         const meta = getAccountMeta(acc.id);
                                         const selected = trFromAccount === acc.id;
@@ -1286,7 +1286,7 @@ export const FinanceScreen: React.FC = () => {
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">
                                     📥 Cuenta de destino
                                 </label>
-                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1">
+                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible scrollbar-hide pb-1">
                                     {visibleAccounts.map(acc => {
                                         const meta = getAccountMeta(acc.id);
                                         const selected = trToAccount === acc.id;

@@ -1,143 +1,151 @@
 import React, { useState } from 'react';
 import { useFeatureData } from '../hooks/useFeatureData';
-import type { GymData, GymRoutine } from '../types';
+import type { GymData, GymRoutine, GymSession, BodyMeasurement } from '../types';
+import { todayStr, getCurrentWeekDates } from '../utils/dateHelpers';
+import { sessionSummary, isPersonalRecord } from '../utils/gymLogic';
+import { RoutineEditorModal } from './gym/RoutineEditorModal';
+import { SessionDetailModal } from './gym/SessionDetailModal';
+import { MeasurementsCard } from './gym/MeasurementsCard';
 
 const WEEK_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
-const todayStr = () => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-};
-
-const getWeekDates = (): string[] => {
-    const today = new Date();
-    const day = today.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + diff);
-    return Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    });
-};
+const DEFAULT_ROUTINES: GymRoutine[] = [
+    { id: 'cardio', icon: '🏃‍♀️', label: 'Cardio', exercises: [] },
+    { id: 'weights', icon: '🏋️‍♀️', label: 'Pesas', exercises: [] },
+    { id: 'yoga', icon: '🧘‍♀️', label: 'Yoga', exercises: [] },
+];
 
 export const GymScreen: React.FC = () => {
     const { data, save } = useFeatureData<GymData>('gym', {
         goalDaysPerWeek: 5,
         streak: 0,
         history: [],
-        customRoutines: [
-            { id: 'cardio', icon: '🏃‍♀️', label: 'Cardio' },
-            { id: 'weights', icon: '🏋️‍♀️', label: 'Pesas' },
-            { id: 'yoga', icon: '🧘‍♀️', label: 'Yoga' }
-        ]
+        customRoutines: DEFAULT_ROUTINES,
+        measurements: [],
     });
 
     const [isEditingGoal, setIsEditingGoal] = useState(false);
     const [tempGoal, setTempGoal] = useState(data.goalDaysPerWeek);
-
-    const [isCreatingRoutine, setIsCreatingRoutine] = useState(false);
-    const [newRoutineEmoji, setNewRoutineEmoji] = useState('💪');
-    const [newRoutineName, setNewRoutineName] = useState('');
-
     const [selectedMonth, setSelectedMonth] = useState<string>('all');
 
-    const weekDates = getWeekDates();
+    // Modales
+    const [routineEditor, setRoutineEditor] = useState<{ open: boolean; routine?: GymRoutine }>({ open: false });
+    const [detailModal, setDetailModal] = useState<{ routine: GymRoutine; session: GymSession } | null>(null);
+    const [prToast, setPrToast] = useState<string | null>(null);
 
-    // Calculate progress for current week
-    const thisWeekWorkouts = weekDates.filter(date => data.history.some(h => h.date === date)).length;
+    const weekDates = getCurrentWeekDates();
+    const today = todayStr();
+    const history = data.history ?? [];
+    const routines = data.customRoutines ?? [];
+
+    // Progreso semanal
+    const thisWeekWorkouts = weekDates.filter(date => history.some(h => h.date === date)).length;
     const progressPercent = Math.min((thisWeekWorkouts / data.goalDaysPerWeek) * 100, 100);
 
-    // --- Statistics Calculations ---
-    const availableMonths = Array.from(new Set(data.history.map(h => h.date.substring(0, 7)))).sort().reverse();
-
-    const filteredHistory = selectedMonth === 'all'
-        ? data.history
-        : data.history.filter(h => h.date.startsWith(selectedMonth));
-
+    // ─── Estadísticas ─────────────────────────────────────────────────────────
+    const availableMonths = Array.from(new Set(history.map(h => h.date.substring(0, 7)))).sort().reverse();
+    const filteredHistory = selectedMonth === 'all' ? history : history.filter(h => h.date.startsWith(selectedMonth));
     const totalWorkouts = filteredHistory.length;
 
-    // Calculate perfect weeks
     const getMonday = (dateStr: string) => {
-        const d = new Date(dateStr);
+        const d = new Date(dateStr + 'T00:00:00');
         const day = d.getDay();
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
         const monday = new Date(d.setDate(diff));
         return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
     };
-
-    // First, get an array of unique dates in the filtered history
     const uniqueWorkoutDates = Array.from(new Set(filteredHistory.map(h => h.date)));
-    
-    // Then reduce those unique dates for weekly goals
     const workoutsPerWeek = uniqueWorkoutDates.reduce((acc, date) => {
         const monday = getMonday(date);
         acc[monday] = (acc[monday] || 0) + 1;
         return acc;
     }, {} as Record<string, number>);
+    const perfectWeeks = Object.values(workoutsPerWeek).filter(c => c >= data.goalDaysPerWeek).length;
 
-    const perfectWeeks = Object.values(workoutsPerWeek).filter(count => count >= data.goalDaysPerWeek).length;
-
-    // Calculate favorite routine
     const routineCounts = filteredHistory.reduce((acc, curr) => {
         acc[curr.workoutId] = (acc[curr.workoutId] || 0) + 1;
         return acc;
     }, {} as Record<string, number>);
-
     const favoriteRoutineId = Object.keys(routineCounts).sort((a, b) => routineCounts[b] - routineCounts[a])[0];
-    const favoriteRoutine = data.customRoutines.find(r => r.id === favoriteRoutineId);
+    const favoriteRoutine = routines.find(r => r.id === favoriteRoutineId);
     const favoriteRoutineCount = favoriteRoutineId ? routineCounts[favoriteRoutineId] : 0;
+
+    // Última sesión con detalle (para mostrar progresión en stats)
+    const lastDetailed = [...history]
+        .filter(h => h.exercises && h.exercises.length > 0)
+        .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const lastDetailedRoutine = lastDetailed ? routines.find(r => r.id === lastDetailed.workoutId) : null;
 
     const formatMonth = (yyyy_mm: string) => {
         const [year, month] = yyyy_mm.split('-');
-        const date = new Date(parseInt(year), parseInt(month) - 1, 1);
-        const name = date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+        const name = new Date(parseInt(year), parseInt(month) - 1, 1)
+            .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
         return name.charAt(0).toUpperCase() + name.slice(1);
     };
-    // -------------------------------
 
-    const handleSaveGoal = async () => {
-        await save({ ...data, goalDaysPerWeek: tempGoal });
+    // ─── Acciones ─────────────────────────────────────────────────────────────
+    const handleSaveGoal = () => {
+        save({ ...data, goalDaysPerWeek: tempGoal });
         setIsEditingGoal(false);
     };
 
-    const handleCreateRoutine = async () => {
-        if (!newRoutineName.trim()) return;
-        const newRoutine: GymRoutine = {
-            id: 'rtn_' + Date.now(),
-            icon: newRoutineEmoji,
-            label: newRoutineName.trim()
-        };
-        await save({ ...data, customRoutines: [...data.customRoutines, newRoutine] });
-        setIsCreatingRoutine(false);
-        setNewRoutineName('');
-        setNewRoutineEmoji('💪');
+    const saveRoutine = (routine: GymRoutine) => {
+        const exists = routines.some(r => r.id === routine.id);
+        const next = exists
+            ? routines.map(r => r.id === routine.id ? routine : r)
+            : [...routines, routine];
+        save({ ...data, customRoutines: next });
+        setRoutineEditor({ open: false });
     };
 
-    const handleDeleteRoutine = async (id: string) => {
-        if (window.confirm('¿Segura que quieres eliminar esta rutina?')) {
-            await save({ ...data, customRoutines: data.customRoutines.filter(r => r.id !== id) });
+    const deleteRoutine = (id: string) => {
+        if (!window.confirm('¿Eliminar esta rutina? El historial de sesiones se conserva.')) return;
+        save({ ...data, customRoutines: routines.filter(r => r.id !== id) });
+    };
+
+    // Quick log: marca/desmarca una rutina para hoy
+    const toggleQuickLog = (routineId: string) => {
+        const logged = history.some(h => h.date === today && h.workoutId === routineId);
+        const next = logged
+            ? history.filter(h => !(h.date === today && h.workoutId === routineId))
+            : [...history, { date: today, workoutId: routineId }];
+        save({ ...data, history: next });
+    };
+
+    // Guardar detalle de una sesión (reemplaza la sesión existente por date+workoutId)
+    const saveSessionDetail = (session: GymSession) => {
+        // Detectar PRs para celebrar
+        const prNames: string[] = [];
+        for (const ex of session.exercises ?? []) {
+            if (isPersonalRecord(history, ex.exerciseId, ex.kind, ex.sets, session.date)) {
+                prNames.push(ex.name);
+            }
+        }
+        const next = history.some(h => h.date === session.date && h.workoutId === session.workoutId)
+            ? history.map(h => (h.date === session.date && h.workoutId === session.workoutId) ? session : h)
+            : [...history, session];
+        save({ ...data, history: next });
+        setDetailModal(null);
+        if (prNames.length > 0) {
+            setPrToast(`🏆 ¡Récord personal en ${prNames.join(', ')}!`);
+            setTimeout(() => setPrToast(null), 3500);
         }
     };
 
-    // Allows logging directly from here just in case they don't want to use the modal
-    const handleLogToggle = async (date: string, workoutId: string) => {
-        const isCurrentlyLogged = data.history.some(h => h.date === date && h.workoutId === workoutId);
-        let newHistory = [...data.history];
-
-        if (isCurrentlyLogged) {
-            newHistory = newHistory.filter(h => !(h.date === date && h.workoutId === workoutId));
-        } else {
-            newHistory.push({ date, workoutId });
-        }
-
-        await save({ ...data, history: newHistory });
+    const saveMeasurements = (next: BodyMeasurement[]) => {
+        save({ ...data, measurements: next });
     };
 
     return (
         <div className="p-6 pt-12 pb-24">
             <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-6">¡A moverse, Nia! 💪</h1>
+
+            {/* PR toast */}
+            {prToast && (
+                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[80] bg-gradient-to-r from-amber-400 to-orange-500 text-white font-bold text-sm px-5 py-3 rounded-full shadow-xl animate-in slide-in-from-top-4">
+                    {prToast}
+                </div>
+            )}
 
             {/* Goal Card */}
             <div className="bg-emerald-600 dark:bg-emerald-800 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden mb-8">
@@ -153,41 +161,31 @@ export const GymScreen: React.FC = () => {
                             <span className="material-symbols-outlined text-sm">edit</span>
                         </button>
                     </div>
-
-                    {/* Progress Bar */}
                     <div className="h-3 w-full bg-black/20 rounded-full overflow-hidden mt-2">
-                        <div
-                            className="h-full bg-white rounded-full transition-all duration-1000 ease-out"
-                            style={{ width: `${progressPercent}%` }}
-                        />
+                        <div className="h-full bg-white rounded-full transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%` }} />
                     </div>
-
                     <p className="text-sm mt-4 text-emerald-100 font-medium">
                         {thisWeekWorkouts === 0 ? '¡Arranca la semana con energía!' :
                             thisWeekWorkouts >= data.goalDaysPerWeek ? '¡Meta semanal cumplida! Eres imparable 🔥' :
                                 '¡Sigue así, vas por buen camino! ✨'}
                     </p>
                 </div>
-
-                {/* Decorative blobs */}
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 pointer-events-none"></div>
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full -ml-12 -mb-12 pointer-events-none"></div>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full -ml-12 -mb-12 pointer-events-none" />
             </div>
 
             {/* Goal Editor Modal */}
             {isEditingGoal && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsEditingGoal(false)}></div>
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsEditingGoal(false)} />
                     <div className="relative bg-white dark:bg-[#231218] p-6 rounded-3xl w-full max-w-sm shadow-2xl">
                         <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 text-center">Meta Semanal</h3>
                         <p className="text-sm text-slate-500 text-center mb-6">¿Cuántos días por semana quieres ir al Gym?</p>
-
                         <div className="flex items-center justify-center gap-4 mb-8">
                             <button onClick={() => setTempGoal(Math.max(1, tempGoal - 1))} className="w-12 h-12 rounded-full bg-slate-100 dark:bg-[#3a2028] text-xl font-bold hover:bg-slate-200 transition-colors">-</button>
                             <span className="text-4xl font-black text-emerald-500 w-16 text-center">{tempGoal}</span>
                             <button onClick={() => setTempGoal(Math.min(7, tempGoal + 1))} className="w-12 h-12 rounded-full bg-slate-100 dark:bg-[#3a2028] text-xl font-bold hover:bg-slate-200 transition-colors">+</button>
                         </div>
-
                         <div className="flex gap-3">
                             <button onClick={() => setIsEditingGoal(false)} className="flex-1 py-3 rounded-xl font-bold bg-slate-100 text-slate-600 dark:bg-[#3a2028] dark:text-slate-300">Cancelar</button>
                             <button onClick={handleSaveGoal} className="flex-1 py-3 rounded-xl font-bold bg-emerald-500 text-white shadow-lg active:scale-95 transition-transform">Guardar</button>
@@ -196,30 +194,33 @@ export const GymScreen: React.FC = () => {
                 </div>
             )}
 
-            {/* Weekly Tracker Calendar */}
+            {/* Weekly Tracker */}
             <div className="mb-10">
                 <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-3 ml-1">Esta semana</h3>
                 <div className="flex justify-between bg-white dark:bg-[#2d1820] p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-[#5a2b35]/30">
                     {weekDates.map((date, i) => {
-                        const historyEntries = data.history.filter(h => h.date === date);
-                        const hasWorkout = historyEntries.length > 0;
-                        const isToday = date === todayStr();
-                        const routineIcons = historyEntries.map(h => data.customRoutines.find(r => r.id === h.workoutId)?.icon || '💪');
-
+                        const entries = history.filter(h => h.date === date);
+                        const hasWorkout = entries.length > 0;
+                        const hasDetail = entries.some(e => e.exercises && e.exercises.length > 0);
+                        const isToday = date === today;
+                        const icons = entries.map(h => routines.find(r => r.id === h.workoutId)?.icon || '💪');
                         return (
-                            <div key={date} className="flex flex-col items-center gap-2 relative group">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-sm transition-all
+                            <div key={date} className="flex flex-col items-center gap-2 relative">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-sm transition-all relative
                                     ${isToday ? 'ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-[#1a0d10]' : ''}
                                     ${hasWorkout
                                         ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
                                         : 'bg-slate-50 dark:bg-[#3a2028] text-slate-300 border border-slate-100 dark:border-white/5'}`}
                                 >
-                                    {hasWorkout ? (
-                                        <div className={routineIcons.length > 1 ? "text-xs flex -space-x-1" : ""}>
-                                            {routineIcons.slice(0, 2).map((icon, idx) => <span key={idx} className={routineIcons.length > 1 ? "bg-emerald-100/50 dark:bg-emerald-900/50 rounded-full" : ""}>{icon}</span>)}
-                                            {routineIcons.length > 2 && <span className="text-[8px] font-black self-end ml-0.5">+</span>}
+                                    {hasWorkout && (
+                                        <div className={icons.length > 1 ? 'text-xs flex -space-x-1' : ''}>
+                                            {icons.slice(0, 2).map((icon, idx) => <span key={idx}>{icon}</span>)}
+                                            {icons.length > 2 && <span className="text-[8px] font-black self-end ml-0.5">+</span>}
                                         </div>
-                                    ) : ''}
+                                    )}
+                                    {hasDetail && (
+                                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-white dark:border-[#2d1820]" title="Sesión con detalle" />
+                                    )}
                                 </div>
                                 <span className={`text-[10px] font-medium uppercase ${isToday ? 'text-emerald-500 font-bold' : 'text-slate-400'}`}>
                                     {WEEK_LABELS[i]}
@@ -230,66 +231,100 @@ export const GymScreen: React.FC = () => {
                 </div>
             </div>
 
-            {/* Custom Routines Manager */}
+            {/* Mis Rutinas */}
             <div>
                 <div className="flex justify-between items-end mb-4 pr-1">
                     <h3 className="font-bold text-slate-700 dark:text-slate-200 ml-1">Mis Rutinas</h3>
-                    <button onClick={() => setIsCreatingRoutine(true)} className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-colors">
+                    <button onClick={() => setRoutineEditor({ open: true })} className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-full hover:bg-emerald-100 transition-colors">
                         + Nueva
                     </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {data.customRoutines.map(routine => {
-                        const isLoggedToday = data.history.some(h => h.date === todayStr() && h.workoutId === routine.id);
+                    {routines.map(routine => {
+                        const session = history.find(h => h.date === today && h.workoutId === routine.id);
+                        const isLoggedToday = !!session;
+                        const exCount = routine.exercises?.length ?? 0;
+                        const hasDetail = !!(session?.exercises && session.exercises.length > 0);
 
                         return (
-                            <div key={routine.id} className={`p-4 rounded-2xl flex items-center justify-between border transition-all ${isLoggedToday ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800' : 'bg-white border-slate-100 dark:bg-[#2d1820] dark:border-[#5a2b35]/30'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-[#3a2028] flex items-center justify-center text-xl shadow-sm border border-slate-100 dark:border-white/5">
-                                        {routine.icon}
-                                    </div>
-                                    <span className={`font-bold text-sm ${isLoggedToday ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                                        {routine.label}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    {/* Quick log button from Gym screen directly */}
+                            <div key={routine.id} className={`p-4 rounded-2xl border transition-all ${isLoggedToday ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800' : 'bg-white border-slate-100 dark:bg-[#2d1820] dark:border-[#5a2b35]/30'}`}>
+                                <div className="flex items-center justify-between">
                                     <button
-                                        onClick={() => handleLogToggle(todayStr(), routine.id)}
-                                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isLoggedToday ? 'text-emerald-500 bg-white dark:bg-emerald-950 shadow-sm' : 'text-slate-300 hover:bg-slate-50 dark:hover:bg-[#3a2028]'}`}
+                                        onClick={() => toggleQuickLog(routine.id)}
+                                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
                                     >
-                                        <span className="material-symbols-outlined text-sm">{isLoggedToday ? 'check_circle' : 'add_circle'}</span>
+                                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-[#3a2028] flex items-center justify-center text-xl shadow-sm border border-slate-100 dark:border-white/5 flex-shrink-0">
+                                            {routine.icon}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <span className={`font-bold text-sm block truncate ${isLoggedToday ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
+                                                {routine.label}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400">
+                                                {exCount > 0 ? `${exCount} ejercicios` : 'Etiqueta rápida'}
+                                                {hasDetail && ' · ✓ con detalle'}
+                                            </span>
+                                        </div>
                                     </button>
-                                    <button onClick={() => handleDeleteRoutine(routine.id)} className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                                        <span className="material-symbols-outlined text-sm">delete</span>
-                                    </button>
+                                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                                        <button
+                                            onClick={() => toggleQuickLog(routine.id)}
+                                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isLoggedToday ? 'text-emerald-500 bg-white dark:bg-emerald-950 shadow-sm' : 'text-slate-300 hover:bg-slate-50 dark:hover:bg-[#3a2028]'}`}
+                                            aria-label={isLoggedToday ? 'Quitar registro de hoy' : 'Registrar hoy'}
+                                        >
+                                            <span className="material-symbols-outlined text-sm">{isLoggedToday ? 'check_circle' : 'add_circle'}</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setRoutineEditor({ open: true, routine })}
+                                            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-emerald-500 hover:bg-slate-50 dark:hover:bg-[#3a2028] transition-colors"
+                                            aria-label="Editar rutina"
+                                        >
+                                            <span className="material-symbols-outlined text-sm">edit</span>
+                                        </button>
+                                        <button onClick={() => deleteRoutine(routine.id)} className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" aria-label="Eliminar rutina">
+                                            <span className="material-symbols-outlined text-sm">delete</span>
+                                        </button>
+                                    </div>
                                 </div>
+
+                                {/* Botón de detalle: solo si está registrada hoy */}
+                                {isLoggedToday && (
+                                    <button
+                                        onClick={() => setDetailModal({ routine, session: session! })}
+                                        className="mt-3 w-full text-xs font-bold py-2 rounded-xl bg-white dark:bg-[#1a0d10] border border-emerald-200 dark:border-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1 active:scale-95 transition-all"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">{hasDetail ? 'edit_note' : 'add_notes'}</span>
+                                        {hasDetail ? 'Ver / editar detalle' : 'Agregar detalle (series, peso…)'}
+                                    </button>
+                                )}
                             </div>
                         );
                     })}
 
-                    {data.customRoutines.length === 0 && (
+                    {routines.length === 0 && (
                         <div className="col-span-full p-6 bg-slate-50 dark:bg-[#2d1820] rounded-2xl text-center border border-dashed border-slate-200 dark:border-white/10">
                             <p className="text-slate-400 text-sm mb-2">Aún no tienes rutinas creadas.</p>
+                            <button onClick={() => setRoutineEditor({ open: true })} className="text-emerald-600 dark:text-emerald-400 font-bold text-sm">+ Crear mi primera rutina</button>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Statistics Section */}
+            {/* Medidas corporales */}
+            <MeasurementsCard measurements={data.measurements ?? []} onSave={saveMeasurements} />
+
+            {/* Estadísticas */}
             <div className="mt-10 mb-4">
                 <div className="flex justify-between items-end mb-4 pr-1">
                     <h3 className="font-bold text-slate-700 dark:text-slate-200 ml-1">Estadísticas</h3>
                     <select
                         value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-none outline-none py-1.5 pl-3 pr-8 rounded-full cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2024%24%24%22%20fill%3D%22none%22%20stroke%3D%22%2310b981%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_4px_center] bg-[length:16px_16px]"
+                        onChange={e => setSelectedMonth(e.target.value)}
+                        className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-none outline-none py-1.5 pl-3 pr-3 rounded-full cursor-pointer"
                     >
                         <option value="all">Histórico completo</option>
-                        {availableMonths.map(m => (
-                            <option key={m} value={m}>{formatMonth(m)}</option>
-                        ))}
+                        {availableMonths.map(m => <option key={m} value={m}>{formatMonth(m)}</option>)}
                     </select>
                 </div>
 
@@ -301,7 +336,6 @@ export const GymScreen: React.FC = () => {
                         <span className="text-2xl font-black text-slate-700 dark:text-slate-200">{totalWorkouts}</span>
                         <span className="text-[10px] uppercase font-bold text-slate-400 mt-1">Entrenamientos</span>
                     </div>
-
                     <div className="bg-white dark:bg-[#2d1820] p-4 rounded-2xl shadow-sm border border-slate-50 dark:border-[#5a2b35]/30 flex flex-col items-center text-center">
                         <div className="w-10 h-10 rounded-full bg-orange-50 text-orange-500 dark:bg-orange-900/20 dark:text-orange-400 flex items-center justify-center mb-2">
                             <span className="material-symbols-outlined">emoji_events</span>
@@ -325,64 +359,39 @@ export const GymScreen: React.FC = () => {
                             <span className="text-[10px] uppercase font-bold text-slate-400 block">Veces</span>
                         </div>
                     </div>
+
+                    {/* Última sesión con detalle */}
+                    {lastDetailed && lastDetailedRoutine && (
+                        <div className="col-span-2 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/15 dark:to-teal-900/15 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
+                            <p className="text-[10px] uppercase font-bold text-emerald-500 mb-1">Última sesión registrada con detalle</p>
+                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                                {sessionSummary(lastDetailed, lastDetailedRoutine.label)}
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                                {new Date(lastDetailed.date + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Create Routine Modal */}
-            {isCreatingRoutine && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCreatingRoutine(false)}></div>
-                    <div className="relative bg-white dark:bg-[#231218] p-6 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 text-center">Nueva Rutina</h3>
-
-                        <div className="space-y-4 mb-6">
-                            <div>
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block ml-1">Emoji</label>
-                                <div className="flex justify-center">
-                                    <input
-                                        type="text"
-                                        value={newRoutineEmoji}
-                                        onChange={(e) => {
-                                            // Only allow a few characters max, expecting just one or two emojis
-                                            const val = e.target.value.substring(0, 4);
-                                            setNewRoutineEmoji(val || '💪');
-                                        }}
-                                        onClick={() => {
-                                            // Clear default if it's the default, to make it easier to type a new one
-                                            if (newRoutineEmoji === '💪') setNewRoutineEmoji('');
-                                        }}
-                                        className="w-16 h-16 text-3xl text-center bg-white dark:bg-[#1a0d10] border-2 border-emerald-100 dark:border-emerald-900/50 rounded-2xl shadow-sm focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all placeholder:opacity-30"
-                                        placeholder="💪"
-                                    />
-                                </div>
-                                <p className="text-[10px] text-center text-slate-400 mt-2">Usa tu teclado para elegir un emoji</p>
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block ml-1">Nombre</label>
-                                <input
-                                    type="text"
-                                    value={newRoutineName}
-                                    onChange={(e) => setNewRoutineName(e.target.value)}
-                                    placeholder="Ej: Día de Pierna..."
-                                    className="w-full bg-slate-50 dark:bg-[#3a2028] border border-slate-200 dark:border-white/10 p-4 rounded-xl font-medium focus:ring-2 focus:ring-emerald-500 outline-none text-slate-800 dark:text-slate-100"
-                                    autoFocus
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3">
-                            <button onClick={() => setIsCreatingRoutine(false)} className="flex-1 py-4 rounded-xl font-bold bg-slate-100 text-slate-600 dark:bg-[#3a2028] dark:text-slate-300">Cancelar</button>
-                            <button
-                                onClick={handleCreateRoutine}
-                                disabled={!newRoutineName.trim()}
-                                className="flex-1 py-4 rounded-xl font-bold bg-emerald-500 text-white shadow-lg active:scale-95 transition-transform disabled:opacity-50"
-                            >
-                                Crear
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            {/* Modales */}
+            {routineEditor.open && (
+                <RoutineEditorModal
+                    routine={routineEditor.routine}
+                    onSave={saveRoutine}
+                    onClose={() => setRoutineEditor({ open: false })}
+                />
+            )}
+            {detailModal && (
+                <SessionDetailModal
+                    routine={detailModal.routine}
+                    date={today}
+                    session={detailModal.session}
+                    history={history}
+                    onSave={saveSessionDetail}
+                    onClose={() => setDetailModal(null)}
+                />
             )}
         </div>
     );

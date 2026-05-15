@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useFeatureData } from '../hooks/useFeatureData';
-import type { PeriodData, GymData, MoodData, CustomMood } from '../types';
+import type { PeriodData, GymData, MoodData, CustomMood, WellnessData, WellnessDay } from '../types';
 import type { EnergyLevel } from '../utils/cycleLogic';
 import { ENERGY_LEVELS } from '../utils/cycleLogic';
 
@@ -41,6 +41,12 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
         ]
     });
 
+    const { data: wellnessData, save: saveWellness } = useFeatureData<WellnessData>('wellness', {
+        days: [],
+        customHabits: [],
+        timerSessions: [],
+    });
+
     const { data: moodData, save: saveMood } = useFeatureData<MoodData>('mood', {
         entries: [],
         customMoods: [
@@ -67,6 +73,7 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
     const [moodLabel, setMoodLabel] = useState<string>('');
     const [moodEmoji, setMoodEmoji] = useState<string>('');
     const [hasBled, setHasBled] = useState<boolean | null>(null);
+    const [sleepHours, setSleepHoursState] = useState<number | undefined>(undefined);
 
     const [flow_level, setFlowLevel] = useState<'light' | 'medium' | 'heavy' | undefined>();
     const [energy_level, setEnergyLevel] = useState<EnergyLevel | undefined>('estable');
@@ -94,6 +101,10 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
             setTodaySymptoms([]); setPainLevel(0); setReliefMethods([]);
         }
 
+        // Load existing sleep from wellness data
+        const wellnessDay = wellnessData.days?.find(d => d.date === date);
+        setSleepHoursState(wellnessDay?.sleepHours);
+
         // Load Gym existing entry
         const existingGymEntries = gymData.history.filter((h: any) => h.date === date);
         if (existingGymEntries.length > 0) {
@@ -103,7 +114,7 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
             setWentToGym(null);
             setSelectedRoutineIds([]);
         }
-    }, [date, data.dailyEntries, gymData, requireWizard]);
+    }, [date, data.dailyEntries, gymData, wellnessData.days, requireWizard]);
 
     const handleQuickAddMood = () => {
         if (!newMoodLabel.trim()) return;
@@ -190,6 +201,17 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
         }
 
         await save({ dailyEntries: updatedEntries, cycleStartDate: newCycleStartDate || '' });
+
+        // Persistir sueño en wellness (fuente única para gráfica de Bienestar)
+        const existingWellnessDay = wellnessData.days?.find(d => d.date === date);
+        const updatedDay: WellnessDay = {
+            date,
+            glasses: existingWellnessDay?.glasses ?? 0,
+            habits: existingWellnessDay?.habits ?? [],
+            sleepHours: sleepHours !== undefined && sleepHours >= 0 ? sleepHours : undefined,
+        };
+        const otherDays = (wellnessData.days || []).filter(d => d.date !== date);
+        await saveWellness({ ...wellnessData, days: [updatedDay, ...otherDays] });
     };
 
     const handleSavePhase4 = async () => {
@@ -340,10 +362,41 @@ export const CycleDayModal: React.FC<CycleDayModalProps> = ({ date, onClose, ini
                         <div className="animate-in fade-in slide-in-from-right-4">
                             {step === 1 && (
                                 <div className="space-y-8">
+                                    {/* Sleep */}
+                                    <div>
+                                        <label className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3 block text-center">
+                                            🌙 ¿Cómo dormiste anoche?
+                                        </label>
+                                        <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+                                            {[4, 5, 6, 7, 8, 9, 10].map(h => {
+                                                const selected = sleepHours === h;
+                                                const selectedClass = h >= 7
+                                                    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-300'
+                                                    : h >= 6
+                                                        ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 ring-2 ring-amber-300'
+                                                        : 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 ring-2 ring-rose-300';
+                                                return (
+                                                    <button
+                                                        key={h}
+                                                        onClick={() => setSleepHoursState(selected ? undefined : h)}
+                                                        className={`py-2.5 rounded-xl font-bold text-xs transition-all ${selected ? selectedClass : 'bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:bg-violet-50 dark:hover:bg-violet-900/20'}`}
+                                                    >
+                                                        {h}h
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {sleepHours !== undefined && (
+                                            <p className="text-[11px] text-violet-400 font-medium mt-2 text-center">
+                                                {sleepHours >= 8 ? '¡Excelente descanso! 🌙' : sleepHours >= 7 ? 'Buen sueño 💜' : sleepHours >= 6 ? 'Dormiste poco' : 'Pocas horas — cuídate hoy 🛌'}
+                                            </p>
+                                        )}
+                                    </div>
+
                                     {/* Mood */}
                                     <div>
                                         <label className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3 block text-center">
-                                            Paso 1: ¿Cómo te sentiste {prefix ? prefix.toLowerCase() : 'ese día'}?
+                                            ¿Cómo te sentiste {prefix ? prefix.toLowerCase() : 'ese día'}?
                                         </label>
                                         <div className="flex gap-2 py-2 overflow-x-auto scrollbar-hide px-1">
                                             {moodData.customMoods?.map((mood: any) => (

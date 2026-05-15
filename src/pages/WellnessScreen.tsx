@@ -6,7 +6,30 @@ import { calculatePhase } from '../utils/cycleLogic';
 import { CycleDayModal } from '../components/CycleDayModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const WATER_GOAL = 8;
+const DEFAULT_WATER_GOAL = 8;
+const WATER_GOAL_OPTIONS = [4, 6, 8, 10, 12];
+
+/** Racha de días consecutivos cumpliendo la meta de agua (incluyendo o no hoy). */
+const computeWaterStreak = (days: WellnessData['days'], goal: number, today: string): number => {
+    const byDate = new Map(days.map(d => [d.date, d]));
+    let streak = 0;
+    const cursor = new Date(today + 'T00:00:00');
+    const todayDay = byDate.get(today);
+    if (!todayDay || (todayDay.glasses ?? 0) < goal) {
+        cursor.setDate(cursor.getDate() - 1);
+    }
+    for (let i = 0; i < 365; i++) {
+        const dStr = toLocalDateStr(cursor);
+        const d = byDate.get(dStr);
+        if (d && (d.glasses ?? 0) >= goal) {
+            streak++;
+            cursor.setDate(cursor.getDate() - 1);
+        } else {
+            break;
+        }
+    }
+    return streak;
+};
 
 // Hábitos seed: si no existen customHabits aún, se inicializa con estos.
 const DEFAULT_HABITS: CustomHabit[] = [
@@ -35,13 +58,79 @@ const TIMER_DURATIONS: { label: string; seconds: number }[] = [
     { label: '25m', seconds: 1500 },
 ];
 
-// Patrón 4-7-8 para respiración guiada
+// Presets de respiración guiada. `scale` define a qué tamaño debe ir el círculo
+// durante esa fase (large = inflado, small = desinflado).
 type BreathPhase = 'inhale' | 'hold' | 'exhale';
-const BREATH_PATTERN: { phase: BreathPhase; seconds: number; label: string }[] = [
-    { phase: 'inhale', seconds: 4, label: 'Inhala' },
-    { phase: 'hold',   seconds: 7, label: 'Mantén' },
-    { phase: 'exhale', seconds: 8, label: 'Exhala' },
+type BreathStep = { phase: BreathPhase; seconds: number; label: string; scale: 'large' | 'small' };
+type BreathPreset = { id: string; name: string; description: string; pattern: BreathStep[] };
+
+const BREATH_PRESETS: BreathPreset[] = [
+    {
+        id: '478',
+        name: '4-7-8',
+        description: 'Relajación profunda',
+        pattern: [
+            { phase: 'inhale', seconds: 4, label: 'Inhala',  scale: 'large' },
+            { phase: 'hold',   seconds: 7, label: 'Mantén',  scale: 'large' },
+            { phase: 'exhale', seconds: 8, label: 'Exhala',  scale: 'small' },
+        ],
+    },
+    {
+        id: 'box',
+        name: 'Caja 4-4-4-4',
+        description: 'Foco y calma',
+        pattern: [
+            { phase: 'inhale', seconds: 4, label: 'Inhala',  scale: 'large' },
+            { phase: 'hold',   seconds: 4, label: 'Mantén',  scale: 'large' },
+            { phase: 'exhale', seconds: 4, label: 'Exhala',  scale: 'small' },
+            { phase: 'hold',   seconds: 4, label: 'Pausa',   scale: 'small' },
+        ],
+    },
+    {
+        id: 'resonant',
+        name: 'Resonante 5-5',
+        description: 'Coherencia cardíaca',
+        pattern: [
+            { phase: 'inhale', seconds: 5, label: 'Inhala',  scale: 'large' },
+            { phase: 'exhale', seconds: 5, label: 'Exhala',  scale: 'small' },
+        ],
+    },
+    {
+        id: 'sleep',
+        name: 'Calma 4-8',
+        description: 'Para dormir mejor',
+        pattern: [
+            { phase: 'inhale', seconds: 4, label: 'Inhala',  scale: 'large' },
+            { phase: 'exhale', seconds: 8, label: 'Exhala',  scale: 'small' },
+        ],
+    },
 ];
+
+// Beep suave usando Web Audio API. Reutilizamos un único AudioContext.
+let _audioCtx: AudioContext | null = null;
+const playPhaseTick = (phase: BreathPhase) => {
+    try {
+        const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (!AC) return;
+        if (!_audioCtx) _audioCtx = new AC();
+        if (!_audioCtx) return;
+        if (_audioCtx.state === 'suspended') _audioCtx.resume();
+        const freq = phase === 'inhale' ? 660 : phase === 'exhale' ? 440 : 550;
+        const osc = _audioCtx.createOscillator();
+        const gain = _audioCtx.createGain();
+        osc.frequency.value = freq;
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0, _audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.08, _audioCtx.currentTime + 0.02);
+        gain.gain.linearRampToValueAtTime(0, _audioCtx.currentTime + 0.18);
+        osc.connect(gain);
+        gain.connect(_audioCtx.destination);
+        osc.start();
+        osc.stop(_audioCtx.currentTime + 0.2);
+    } catch {
+        // silencioso si no hay audio
+    }
+};
 
 const sendNotif = (body: string) => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -135,6 +224,10 @@ export const WellnessScreen: React.FC = () => {
     const todayData = data.days.find(d => d.date === today) ?? { date: today, glasses: 0, habits: [] as string[], sleepHours: undefined };
     const customHabits = data.customHabits ?? DEFAULT_HABITS;
     const visibleHabits = customHabits.filter(h => !h.archived);
+    const waterGoal = data.waterGoal ?? DEFAULT_WATER_GOAL;
+    const waterStreak = useMemo(() => computeWaterStreak(data.days, waterGoal, today), [data.days, waterGoal, today]);
+    const [showGoalPicker, setShowGoalPicker] = useState(false);
+    const [waterCelebrate, setWaterCelebrate] = useState(false);
 
     // Fase del ciclo (para tip)
     const phase = periodData.cycleStartDate
@@ -159,9 +252,13 @@ export const WellnessScreen: React.FC = () => {
     const [mode, setMode] = useState<'breathing' | 'pomodoro'>('breathing');
     const [timerDurationSec, setTimerDurationSec] = useState(300); // 5 min default
     const [timeLeft, setTimeLeft] = useState(300);
+    // Preset de respiración activo (por defecto 4-7-8)
+    const [presetId, setPresetId] = useState<string>('478');
+    const breathPattern = (BREATH_PRESETS.find(p => p.id === presetId) ?? BREATH_PRESETS[0]).pattern;
     // Para respiración guiada: índice del paso actual y segundos restantes en el paso
     const [breathStepIdx, setBreathStepIdx] = useState(0);
-    const [breathStepLeft, setBreathStepLeft] = useState(BREATH_PATTERN[0].seconds);
+    const [breathStepLeft, setBreathStepLeft] = useState(breathPattern[0].seconds);
+    const [audioCues, setAudioCues] = useState(false);
 
     const [notifGranted, setNotifGranted] = useState(typeof Notification !== 'undefined' && Notification.permission === 'granted');
 
@@ -188,19 +285,18 @@ export const WellnessScreen: React.FC = () => {
             if (mode === 'breathing') {
                 setBreathStepLeft(prev => {
                     if (prev <= 1) {
-                        // Avanza al siguiente paso del patrón 4-7-8
-                        setBreathStepIdx(i => {
-                            const next = (i + 1) % BREATH_PATTERN.length;
-                            return next;
-                        });
-                        return BREATH_PATTERN[(breathStepIdx + 1) % BREATH_PATTERN.length].seconds;
+                        // Avanza al siguiente paso del patrón actual
+                        const nextIdx = (breathStepIdx + 1) % breathPattern.length;
+                        setBreathStepIdx(nextIdx);
+                        if (audioCues) playPhaseTick(breathPattern[nextIdx].phase);
+                        return breathPattern[nextIdx].seconds;
                     }
                     return prev - 1;
                 });
             }
         }, 1000);
         return () => clearInterval(id);
-    }, [timerActive, timeLeft, mode, breathStepIdx]);
+    }, [timerActive, timeLeft, mode, breathStepIdx, breathPattern, audioCues]);
 
     const setTimerMode = (m: 'breathing' | 'pomodoro') => {
         setMode(m);
@@ -209,7 +305,7 @@ export const WellnessScreen: React.FC = () => {
         setTimerDurationSec(defaultDuration);
         setTimeLeft(defaultDuration);
         setBreathStepIdx(0);
-        setBreathStepLeft(BREATH_PATTERN[0].seconds);
+        setBreathStepLeft(breathPattern[0].seconds);
     };
 
     const setDuration = (seconds: number) => {
@@ -217,8 +313,30 @@ export const WellnessScreen: React.FC = () => {
         setTimerDurationSec(seconds);
         setTimeLeft(seconds);
         setBreathStepIdx(0);
-        setBreathStepLeft(BREATH_PATTERN[0].seconds);
+        setBreathStepLeft(breathPattern[0].seconds);
     };
+
+    const setBreathPreset = (id: string) => {
+        setPresetId(id);
+        setTimerActive(false);
+        const next = BREATH_PRESETS.find(p => p.id === id) ?? BREATH_PRESETS[0];
+        setBreathStepIdx(0);
+        setBreathStepLeft(next.pattern[0].seconds);
+    };
+
+    // Racha de días con al menos una sesión completada
+    const meditationStreak = useMemo(() => {
+        const dates = new Set((data.timerSessions ?? []).filter(s => s.completed).map(s => s.date));
+        let streak = 0;
+        const cursor = new Date(today + 'T00:00:00');
+        if (!dates.has(today)) cursor.setDate(cursor.getDate() - 1);
+        for (let i = 0; i < 365; i++) {
+            const dStr = toLocalDateStr(cursor);
+            if (dates.has(dStr)) { streak++; cursor.setDate(cursor.getDate() - 1); }
+            else break;
+        }
+        return streak;
+    }, [data.timerSessions, today]);
 
     const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -230,7 +348,19 @@ export const WellnessScreen: React.FC = () => {
     };
 
     const setGlasses = (n: number) => updateToday({ glasses: n });
-    const setSleepHours = (h: number) => updateToday({ sleepHours: h });
+
+    const addGlass = () => {
+        const next = Math.min((todayData.glasses ?? 0) + 1, 30);
+        const wasUnder = (todayData.glasses ?? 0) < waterGoal;
+        setGlasses(next);
+        if (wasUnder && next >= waterGoal) {
+            setWaterCelebrate(true);
+            sendNotif(`¡Meta de agua alcanzada! 💧 (${waterGoal} vasos)`);
+            setTimeout(() => setWaterCelebrate(false), 1800);
+        }
+    };
+    const removeGlass = () => setGlasses(Math.max((todayData.glasses ?? 0) - 1, 0));
+    const updateWaterGoal = (g: number) => save({ waterGoal: g });
 
     /** Toggle de hábito por ID. Limpia entradas legacy con label. */
     const toggleHabit = (habit: CustomHabit) => {
@@ -332,10 +462,10 @@ export const WellnessScreen: React.FC = () => {
         return { breathingMin, pomodoroMin, total: filtered.length };
     }, [data.timerSessions, last7]);
 
-    // Animación de respiración: scale del círculo según fase 4-7-8
-    const currentBreathStep = BREATH_PATTERN[breathStepIdx];
+    // Animación de respiración: scale del círculo según fase del preset activo
+    const currentBreathStep = breathPattern[Math.min(breathStepIdx, breathPattern.length - 1)];
     const breathScale = mode === 'breathing' && timerActive
-        ? currentBreathStep.phase === 'inhale' ? 1.25 : currentBreathStep.phase === 'hold' ? 1.25 : 0.85
+        ? currentBreathStep.scale === 'large' ? 1.3 : 0.78
         : 1;
 
     return (
@@ -431,64 +561,117 @@ export const WellnessScreen: React.FC = () => {
             })()}
 
             {/* ── Water Tracker ─────────────────────────────────────────────────── */}
-            <div className="bg-white dark:bg-[#2d1820] rounded-2xl p-4 shadow-sm border border-blue-50 dark:border-[#5a2b35]/30 mb-6">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold text-slate-700 dark:text-slate-200">Hidratación</h3>
-                    <span className="text-xs font-bold text-blue-400">{todayData.glasses}/{WATER_GOAL} vasos</span>
-                </div>
-                <div className="flex justify-between gap-1">
-                    {Array.from({ length: WATER_GOAL }).map((_, i) => (
-                        <button
-                            key={i}
-                            onClick={() => setGlasses(todayData.glasses === i + 1 ? i : i + 1)}
-                            className={`flex-1 h-10 rounded-b-xl rounded-t-sm transition-all ${i < todayData.glasses ? 'bg-blue-400 shadow-sm' : 'bg-blue-50 dark:bg-[#0a1a2a] translate-y-1'}`}
-                        />
-                    ))}
-                </div>
-                {todayData.glasses >= WATER_GOAL && (
-                    <p className="text-xs text-blue-400 font-bold text-center mt-3">¡Meta de agua alcanzada! 💧</p>
-                )}
-            </div>
+            {(() => {
+                const glasses = todayData.glasses ?? 0;
+                const pct = Math.min((glasses / waterGoal) * 100, 100);
+                const goalReached = glasses >= waterGoal;
+                return (
+                    <div className={`relative overflow-hidden bg-gradient-to-br from-sky-50 to-blue-50 dark:from-[#0e2233] dark:to-[#0a1a2a] rounded-3xl p-5 shadow-sm border border-blue-100 dark:border-blue-900/30 mb-6 ${waterCelebrate ? 'animate-pulse' : ''}`}>
+                        {/* Confetti / shine overlay on celebration */}
+                        {waterCelebrate && (
+                            <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/40 to-transparent animate-in slide-in-from-left-full duration-700" />
+                        )}
 
-            {/* ── Sleep Tracker ─────────────────────────────────────────────────── */}
-            <div className="bg-white dark:bg-[#2d1820] rounded-2xl p-4 shadow-sm border border-violet-50 dark:border-[#5a2b35]/30 mb-6">
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-bold text-slate-700 dark:text-slate-200">Sueño anoche</h3>
-                    {todayData.sleepHours !== undefined && (
-                        <span className={`text-xs font-bold ${todayData.sleepHours >= 7 ? 'text-emerald-500' : todayData.sleepHours >= 6 ? 'text-amber-500' : 'text-rose-500'}`}>
-                            {todayData.sleepHours}h
-                        </span>
-                    )}
-                </div>
-                <div className="grid grid-cols-6 gap-2">
-                    {[5, 6, 7, 8, 9, 10].map(h => {
-                        const selected = todayData.sleepHours === h;
-                        // Clases estáticas (Tailwind no purga las que vea como literales)
-                        const selectedClass = h >= 7
-                            ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 ring-2 ring-emerald-300'
-                            : h >= 6
-                                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 ring-2 ring-amber-300'
-                                : 'bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 ring-2 ring-rose-300';
-                        return (
+                        <div className="flex items-start justify-between mb-3">
+                            <div>
+                                <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-lg flex items-center gap-2">
+                                    💧 Hidratación
+                                </h3>
+                                <p className="text-[11px] text-blue-500 dark:text-blue-300 font-bold mt-0.5">
+                                    {goalReached ? '¡Meta lograda hoy! 🎉' : `${glasses}/${waterGoal} vasos · ${Math.round(pct)}%`}
+                                </p>
+                            </div>
+                            {waterStreak > 0 && (
+                                <div className="flex flex-col items-end gap-0.5 bg-white/70 dark:bg-black/30 rounded-2xl px-3 py-1.5 backdrop-blur-sm">
+                                    <span className="text-base">🔥</span>
+                                    <span className="text-[10px] font-extrabold text-orange-500">{waterStreak}d</span>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                            {/* Bottle visual */}
+                            <div className="relative w-20 h-32 flex-shrink-0">
+                                <div className="absolute inset-x-3 -top-1 h-3 rounded-t-md bg-blue-200 dark:bg-blue-900/50" aria-hidden />
+                                <div className="absolute inset-0 mt-2 rounded-b-3xl rounded-t-xl border-4 border-blue-300 dark:border-blue-700 bg-white/40 dark:bg-black/20 overflow-hidden shadow-inner">
+                                    <div
+                                        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-blue-500 to-sky-300 transition-all duration-500 ease-out"
+                                        style={{ height: `${pct}%` }}
+                                    >
+                                        <div className="absolute top-0 left-0 right-0 h-1.5 bg-white/40" />
+                                    </div>
+                                </div>
+                                {goalReached && (
+                                    <span className="absolute -top-3 -right-3 text-2xl drop-shadow">✨</span>
+                                )}
+                            </div>
+
+                            {/* Controls */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <button
+                                        onClick={removeGlass}
+                                        disabled={glasses === 0}
+                                        className="w-11 h-11 rounded-full bg-white dark:bg-[#1a0d10] border border-blue-100 dark:border-blue-900/40 text-blue-500 dark:text-blue-300 text-xl font-bold flex-shrink-0 disabled:opacity-30 active:scale-90 transition-all"
+                                        aria-label="Quitar vaso"
+                                    >
+                                        −
+                                    </button>
+                                    <button
+                                        onClick={addGlass}
+                                        className="flex-1 h-11 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-bold shadow-md shadow-blue-500/30 active:scale-95 transition-all"
+                                    >
+                                        + 1 vaso
+                                    </button>
+                                </div>
+                                {/* Mini cup visual */}
+                                <div className="flex gap-1">
+                                    {Array.from({ length: waterGoal }).map((_, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => setGlasses(glasses === i + 1 ? i : i + 1)}
+                                            className={`flex-1 h-2 rounded-full transition-all ${i < glasses ? 'bg-blue-500' : 'bg-blue-100 dark:bg-blue-900/40'}`}
+                                            aria-label={`Vaso ${i + 1}`}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Goal picker */}
+                        <div className="mt-4 flex items-center justify-between">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                Meta diaria: <span className="font-bold text-slate-700 dark:text-slate-200">{waterGoal} vasos</span>
+                            </p>
                             <button
-                                key={h}
-                                onClick={() => setSleepHours(selected ? -1 : h)}
-                                className={`py-2 rounded-xl font-bold text-xs transition-all
-                                    ${selected ? selectedClass : 'bg-slate-50 dark:bg-black/20 text-slate-500 dark:text-slate-400 hover:bg-violet-50'}`}
+                                onClick={() => setShowGoalPicker(v => !v)}
+                                className="text-[11px] font-bold text-blue-500 hover:underline flex items-center gap-0.5"
                             >
-                                {h}h
+                                <span className="material-symbols-outlined text-xs">tune</span>
+                                Cambiar
                             </button>
-                        );
-                    })}
-                </div>
-                {todayData.sleepHours !== undefined && todayData.sleepHours >= 0 && (
-                    <p className="text-[11px] text-violet-400 font-medium mt-2 text-center">
-                        {todayData.sleepHours >= 8 ? '¡Excelente descanso! 🌙' : todayData.sleepHours >= 7 ? 'Buen sueño 💜' : todayData.sleepHours >= 6 ? 'Dormiste poco, intenta acostarte antes' : 'Pocas horas de sueño. Cuídate hoy 🛌'}
-                    </p>
-                )}
-            </div>
+                        </div>
+                        {showGoalPicker && (
+                            <div className="mt-2 flex gap-1.5 animate-in fade-in slide-in-from-top-1">
+                                {WATER_GOAL_OPTIONS.map(g => (
+                                    <button
+                                        key={g}
+                                        onClick={() => { updateWaterGoal(g); setShowGoalPicker(false); }}
+                                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${g === waterGoal
+                                            ? 'bg-blue-500 text-white shadow-md scale-105'
+                                            : 'bg-white dark:bg-[#1a0d10] text-slate-500 border border-blue-100 dark:border-blue-900/40 hover:border-blue-300'
+                                            }`}
+                                    >
+                                        {g}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
-            {/* ── Habits con racha + edición ───────────────────────────────────── */}
+{/* ── Habits con racha + edición ───────────────────────────────────── */}
             <div className="mb-6">
                 <div className="flex items-center justify-between mb-3">
                     <h3 className="font-bold text-slate-700 dark:text-slate-200">
@@ -539,23 +722,50 @@ export const WellnessScreen: React.FC = () => {
                 )}
             </div>
 
-            {/* ── Timer (Respiración 4-7-8 + Pomodoro) ─────────────────────────── */}
+            {/* ── Timer (Respiración con presets + Pomodoro) ────────────────────── */}
             <div className="bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-[#0d2b2b] dark:to-[#0a2233] rounded-3xl p-6 mb-6 text-center border border-teal-100 dark:border-teal-900/40">
-                {/* Mode tabs */}
-                <div className="flex justify-center gap-2 mb-4">
-                    <button
-                        onClick={() => setTimerMode('breathing')}
-                        className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${mode === 'breathing' ? 'bg-teal-500 text-white shadow-md' : 'text-teal-400 bg-white/50 dark:bg-white/10'}`}
-                    >
-                        Respiración 4-7-8
-                    </button>
-                    <button
-                        onClick={() => setTimerMode('pomodoro')}
-                        className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${mode === 'pomodoro' ? 'bg-cyan-500 text-white shadow-md' : 'text-cyan-400 bg-white/50 dark:bg-white/10'}`}
-                    >
-                        Pomodoro
-                    </button>
+                {/* Mode tabs + Streak badge */}
+                <div className="flex justify-between items-center mb-4">
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setTimerMode('breathing')}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${mode === 'breathing' ? 'bg-teal-500 text-white shadow-md' : 'text-teal-400 bg-white/50 dark:bg-white/10'}`}
+                        >
+                            Respiración
+                        </button>
+                        <button
+                            onClick={() => setTimerMode('pomodoro')}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${mode === 'pomodoro' ? 'bg-cyan-500 text-white shadow-md' : 'text-cyan-400 bg-white/50 dark:bg-white/10'}`}
+                        >
+                            Pomodoro
+                        </button>
+                    </div>
+                    {meditationStreak > 0 && (
+                        <div className="flex items-center gap-1 bg-white/70 dark:bg-black/30 rounded-full px-2.5 py-1">
+                            <span className="text-sm">🔥</span>
+                            <span className="text-[11px] font-extrabold text-orange-500">{meditationStreak}d</span>
+                        </div>
+                    )}
                 </div>
+
+                {/* Breath preset picker (solo en modo respiración) */}
+                {mode === 'breathing' && (
+                    <div className="flex gap-1.5 mb-4 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1">
+                        {BREATH_PRESETS.map(p => (
+                            <button
+                                key={p.id}
+                                onClick={() => setBreathPreset(p.id)}
+                                className={`flex-shrink-0 flex flex-col items-start px-3 py-1.5 rounded-2xl border transition-all text-left min-w-[5.5rem] ${presetId === p.id
+                                    ? 'bg-teal-500 text-white border-teal-500 shadow-md'
+                                    : 'bg-white/70 dark:bg-white/5 text-teal-600 dark:text-teal-300 border-teal-200/60 dark:border-teal-800/40'
+                                    }`}
+                            >
+                                <span className="text-[11px] font-extrabold leading-tight">{p.name}</span>
+                                <span className={`text-[9px] leading-tight ${presetId === p.id ? 'text-white/80' : 'text-teal-400/80'}`}>{p.description}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {/* Duration chips */}
                 <div className="flex justify-center gap-1.5 mb-4 flex-wrap">
@@ -572,29 +782,55 @@ export const WellnessScreen: React.FC = () => {
                 </div>
 
                 {/* Breathing animated circle / Pomodoro static circle */}
-                <div className="relative w-48 h-48 mx-auto flex items-center justify-center mb-4">
+                <div className="relative w-52 h-52 mx-auto flex items-center justify-center mb-4">
+                    {/* Outer ring (siempre) */}
+                    <div className="absolute inset-0 rounded-full border border-teal-200/40 dark:border-teal-800/30" />
+                    {/* Glow */}
+                    {mode === 'breathing' && timerActive && (
+                        <div
+                            className={`absolute inset-0 rounded-full blur-xl opacity-50 transition-all ease-in-out
+                                ${currentBreathStep.phase === 'inhale' ? 'bg-emerald-300' : currentBreathStep.phase === 'hold' ? 'bg-amber-200' : 'bg-sky-300'}`}
+                            style={{
+                                transform: `scale(${breathScale})`,
+                                transitionDuration: `${currentBreathStep.seconds}s`,
+                            }}
+                        />
+                    )}
+                    {/* Animated breath circle */}
                     <div
                         className={`absolute inset-0 rounded-full border-4 transition-transform ease-in-out
                             ${mode === 'breathing'
-                                ? currentBreathStep.phase === 'inhale' ? 'border-emerald-300 dark:border-emerald-600' : currentBreathStep.phase === 'hold' ? 'border-amber-300 dark:border-amber-600' : 'border-sky-300 dark:border-sky-600'
+                                ? currentBreathStep.phase === 'inhale' ? 'border-emerald-400 dark:border-emerald-500' : currentBreathStep.phase === 'hold' ? 'border-amber-400 dark:border-amber-500' : 'border-sky-400 dark:border-sky-500'
                                 : 'border-teal-200/50 dark:border-teal-700/40'}`}
                         style={{
                             transform: `scale(${breathScale})`,
                             transitionDuration: timerActive && mode === 'breathing' ? `${currentBreathStep.seconds}s` : '0.3s',
                         }}
-                    ></div>
-                    <div className="text-center">
+                    />
+                    <div className="text-center relative z-10">
                         <div className="text-5xl font-extrabold text-teal-600 dark:text-teal-300 font-mono tracking-wider">
                             {formatTime(timeLeft)}
                         </div>
                         {mode === 'breathing' && timerActive && (
-                            <p className="text-xs font-bold text-teal-500 mt-1">{currentBreathStep.label} · {breathStepLeft}s</p>
+                            <p className={`text-sm font-extrabold mt-1 ${currentBreathStep.phase === 'inhale' ? 'text-emerald-500' : currentBreathStep.phase === 'hold' ? 'text-amber-500' : 'text-sky-500'}`}>
+                                {currentBreathStep.label}
+                            </p>
+                        )}
+                        {mode === 'breathing' && timerActive && (
+                            <p className="text-[10px] text-slate-400 mt-0.5">{breathStepLeft}s</p>
                         )}
                     </div>
                 </div>
 
                 {/* Controls */}
-                <div className="flex gap-3 justify-center">
+                <div className="flex gap-3 justify-center items-center">
+                    <button
+                        onClick={() => setAudioCues(a => !a)}
+                        title={audioCues ? 'Apagar sonido' : 'Sonido por fase'}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${audioCues ? 'bg-teal-500 text-white shadow' : 'bg-white/70 dark:bg-white/10 text-teal-500'}`}
+                    >
+                        <span className="material-symbols-outlined text-lg">{audioCues ? 'volume_up' : 'volume_off'}</span>
+                    </button>
                     <button
                         onClick={() => setTimerActive(a => !a)}
                         className="bg-white dark:bg-teal-900/60 text-teal-600 dark:text-teal-300 w-16 h-16 rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
@@ -602,16 +838,18 @@ export const WellnessScreen: React.FC = () => {
                         <span className="material-symbols-outlined text-3xl">{timerActive ? 'pause' : 'play_arrow'}</span>
                     </button>
                     <button
-                        onClick={() => { setTimerActive(false); setTimeLeft(timerDurationSec); setBreathStepIdx(0); setBreathStepLeft(BREATH_PATTERN[0].seconds); }}
-                        className="bg-white/80 dark:bg-teal-900/40 text-slate-400 w-12 h-12 rounded-full flex items-center justify-center self-center hover:scale-110 transition-transform"
+                        onClick={() => { setTimerActive(false); setTimeLeft(timerDurationSec); setBreathStepIdx(0); setBreathStepLeft(breathPattern[0].seconds); }}
+                        className="bg-white/80 dark:bg-teal-900/40 text-slate-400 w-10 h-10 rounded-full flex items-center justify-center hover:scale-110 transition-transform"
                     >
-                        <span className="material-symbols-outlined text-xl">replay</span>
+                        <span className="material-symbols-outlined text-lg">replay</span>
                     </button>
                 </div>
 
                 <p className="text-teal-400 text-sm mt-4 font-medium">
                     {!timerActive
-                        ? 'Lista para empezar'
+                        ? mode === 'breathing'
+                            ? 'Lista para empezar — toca play para comenzar'
+                            : 'Lista para empezar'
                         : mode === 'breathing'
                             ? 'Respira siguiendo el círculo'
                             : '¡Enfócate, Nia!'}
@@ -644,11 +882,11 @@ export const WellnessScreen: React.FC = () => {
                 <div className="mb-4">
                     <div className="flex justify-between text-[10px] text-slate-400 mb-1">
                         <span>💧 Agua</span>
-                        <span>Meta {WATER_GOAL}</span>
+                        <span>Meta {waterGoal}</span>
                     </div>
                     <div className="flex justify-between gap-1 h-12">
                         {last7Wellness.map(d => {
-                            const pct = Math.min((d.glasses / WATER_GOAL) * 100, 100);
+                            const pct = Math.min(((d.glasses ?? 0) / waterGoal) * 100, 100);
                             return (
                                 <div key={d.date} className="flex-1 bg-blue-50 dark:bg-black/20 rounded-md relative overflow-hidden">
                                     <div
