@@ -8,14 +8,49 @@ interface Props {
     notes: DiaryNote[];
     onDelete: (id: string) => Promise<void>;
     onTogglePin: (id: string) => Promise<void>;
+    onUpdate: (id: string, partial: Partial<DiaryNote>) => Promise<void>;
 }
 
 type Filter = 'all' | 'thought' | 'voice' | 'letter' | 'poem';
 
-export const ConstellationView: React.FC<Props> = ({ notes, onDelete, onTogglePin }) => {
+export const ConstellationView: React.FC<Props> = ({ notes, onDelete, onTogglePin, onUpdate }) => {
     const [filter, setFilter] = useState<Filter>('all');
     const [search, setSearch] = useState('');
     const [openId, setOpenId] = useState<string | null>(null);
+
+    // Edición en línea de una entrada guardada.
+    const [editId, setEditId] = useState<string | null>(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editBody, setEditBody] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const startEdit = (n: DiaryNote) => {
+        setEditId(n.id);
+        setEditTitle(n.title || '');
+        setEditBody(n.body || '');
+    };
+
+    const cancelEdit = () => {
+        setEditId(null);
+        setEditTitle('');
+        setEditBody('');
+    };
+
+    const saveEdit = async (id: string) => {
+        setSaving(true);
+        try {
+            // Nota: enviamos string vacío (no undefined) al limpiar el título,
+            // porque updateDiaryNote no filtra undefined y Firestore lo rechaza.
+            await onUpdate(id, {
+                title: editTitle.trim(),
+                body: editBody.trim(),
+                updatedAt: Date.now(),
+            });
+            cancelEdit();
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const filtered = useMemo(() => {
         let list = [...notes].sort((a, b) => {
@@ -120,35 +155,89 @@ export const ConstellationView: React.FC<Props> = ({ notes, onDelete, onTogglePi
 
                             {opened?.id === n.id && unlocked && (
                                 <div className="px-4 pb-4 border-t border-slate-100 dark:border-[#5a2b35]/20 pt-4 space-y-3">
-                                    {n.body && (
-                                        <div
-                                            className="font-serif-diary text-[16px] leading-relaxed text-slate-700 dark:text-slate-200 whitespace-pre-wrap"
-                                            dangerouslySetInnerHTML={{ __html: renderLightMarkdown(n.body) }}
-                                        />
-                                    )}
-                                    {n.voiceClip && <VoiceClipPlayer clip={n.voiceClip} />}
-                                    {n.loopPattern && <LoopPreview pattern={n.loopPattern} />}
+                                    {editId === n.id ? (
+                                        /* ── Modo edición ─────────────────────────── */
+                                        <div className="space-y-3">
+                                            <input
+                                                value={editTitle}
+                                                onChange={e => setEditTitle(e.target.value)}
+                                                placeholder="Título (opcional)"
+                                                className="w-full bg-transparent outline-none text-lg font-bold text-slate-700 dark:text-slate-100 placeholder:text-slate-300 font-serif-diary border-b border-rose-100 dark:border-rose-900/30 pb-1"
+                                            />
+                                            <textarea
+                                                value={editBody}
+                                                onChange={e => setEditBody(e.target.value)}
+                                                rows={Math.max(6, editBody.split('\n').length + 1)}
+                                                placeholder="Escribe aquí…"
+                                                className="diary-editor w-full bg-transparent outline-none resize-none text-slate-700 dark:text-slate-200 font-serif-diary text-[16px] leading-relaxed"
+                                            />
+                                            {(n.voiceClip || n.loopPattern) && (
+                                                <p className="text-[10px] text-slate-400 italic">
+                                                    {n.voiceClip ? 'El memo de voz' : 'El loop'} se conserva sin cambios.
+                                                </p>
+                                            )}
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <button
+                                                    onClick={() => saveEdit(n.id)}
+                                                    disabled={saving}
+                                                    className="text-[11px] px-3 py-1.5 rounded-full bg-rose-500 text-white font-bold flex items-center gap-1 disabled:opacity-40"
+                                                >
+                                                    <span className="material-symbols-outlined text-sm">check</span>
+                                                    {saving ? 'Guardando…' : 'Guardar cambios'}
+                                                </button>
+                                                <button
+                                                    onClick={cancelEdit}
+                                                    disabled={saving}
+                                                    className="text-[11px] px-3 py-1.5 rounded-full bg-slate-100 dark:bg-[#3a2028] text-slate-500 font-bold"
+                                                >
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        /* ── Modo lectura ─────────────────────────── */
+                                        <>
+                                            {n.body && (
+                                                <div
+                                                    className="font-serif-diary text-[16px] leading-relaxed text-slate-700 dark:text-slate-200 whitespace-pre-wrap"
+                                                    dangerouslySetInnerHTML={{ __html: renderLightMarkdown(n.body) }}
+                                                />
+                                            )}
+                                            {n.voiceClip && <VoiceClipPlayer clip={n.voiceClip} />}
+                                            {n.loopPattern && <LoopPreview pattern={n.loopPattern} />}
+                                            {n.updatedAt && (
+                                                <p className="text-[10px] text-slate-400 italic">Editado · {formatDate(n.updatedAt)}</p>
+                                            )}
 
-                                    <div className="flex items-center gap-2 pt-1">
-                                        <button
-                                            onClick={() => onTogglePin(n.id)}
-                                            className="text-[11px] px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-500 font-bold flex items-center gap-1"
-                                        >
-                                            <span className="material-symbols-outlined text-sm">{n.pinned ? 'keep_off' : 'push_pin'}</span>
-                                            {n.pinned ? 'Quitar fijado' : 'Fijar'}
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                if (confirm('¿Borrar esta entrada? No se puede recuperar.')) {
-                                                    onDelete(n.id);
-                                                }
-                                            }}
-                                            className="text-[11px] px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-500 font-bold flex items-center gap-1 ml-auto"
-                                        >
-                                            <span className="material-symbols-outlined text-sm">delete</span>
-                                            Borrar
-                                        </button>
-                                    </div>
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <button
+                                                    onClick={() => onTogglePin(n.id)}
+                                                    className="text-[11px] px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-500 font-bold flex items-center gap-1"
+                                                >
+                                                    <span className="material-symbols-outlined text-sm">{n.pinned ? 'keep_off' : 'push_pin'}</span>
+                                                    {n.pinned ? 'Quitar fijado' : 'Fijar'}
+                                                </button>
+                                                <button
+                                                    onClick={() => startEdit(n)}
+                                                    className="text-[11px] px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-500 font-bold flex items-center gap-1"
+                                                >
+                                                    <span className="material-symbols-outlined text-sm">edit</span>
+                                                    Editar
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        if (confirm('¿Borrar esta entrada? No se puede recuperar.')) {
+                                                            onDelete(n.id);
+                                                        }
+                                                    }}
+                                                    className="text-[11px] px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-500 font-bold flex items-center gap-1 ml-auto"
+                                                >
+                                                    <span className="material-symbols-outlined text-sm">delete</span>
+                                                    Borrar
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>

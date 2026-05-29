@@ -27,7 +27,7 @@ const modeStyles: Record<string, { active: string; idle: string }> = {
 
 export const DiaryScreen: React.FC = () => {
     const { user } = useAuth();
-    const { notes, loading, error, addNote, deleteNote, togglePin, clearError } = useDiaryNotes();
+    const { notes, loading, error, addNote, updateNote, deleteNote, togglePin, clearError } = useDiaryNotes();
     // Adaptador para los modos hijos: ellos no necesitan el DiaryNote que retorna el hook
     const handleSave = async (incoming: Parameters<typeof addNote>[0]): Promise<void> => {
         await addNote(incoming);
@@ -159,6 +159,7 @@ export const DiaryScreen: React.FC = () => {
                     notes={notes}
                     onDelete={deleteNote}
                     onTogglePin={togglePin}
+                    onUpdate={updateNote}
                 />
             )}
 
