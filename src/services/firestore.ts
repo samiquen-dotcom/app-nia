@@ -142,6 +142,21 @@ export const FirestoreService = {
         }
     },
 
+    // Obtener TODAS las transacciones (sin paginar). Se usa al filtrar por cuenta,
+    // porque el historial de una cuenta puede estar más allá de los 10 más recientes.
+    getAllTransactions: async (userId: string): Promise<Trade[]> => {
+        try {
+            const txRef = collection(db, `users/${userId}/features/${Features.FINANCE}/transactions`);
+            const snap = await getDocs(query(txRef, orderBy('id', 'desc')));
+            const transactions: Trade[] = [];
+            snap.forEach(doc => transactions.push(doc.data() as Trade));
+            return transactions;
+        } catch (e) {
+            console.error("Error fetching all transactions:", e);
+            return [];
+        }
+    },
+
     // Agregar transacción y actualizar balances atómicamente
     addTransaction: async (userId: string, tx: Trade) => {
         const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);

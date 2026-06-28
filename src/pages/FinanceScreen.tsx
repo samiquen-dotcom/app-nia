@@ -201,6 +201,10 @@ export const FinanceScreen: React.FC = () => {
     const [showArchived, setShowArchived] = useState(false);
     const [isRecalculating, setIsRecalculating] = useState(false);
     const [filterAccountId, setFilterAccountId] = useState<string | null>(null);
+    // Al filtrar por cuenta cargamos TODOS los movimientos (no solo los 10 paginados),
+    // porque el historial de una cuenta puede estar más atrás. null = aún no cargados.
+    const [allTx, setAllTx] = useState<Transaction[] | null>(null);
+    const [loadingAllTx, setLoadingAllTx] = useState(false);
 
     // ─── Computed ───────────────────────────────────────────────────────────────
     // Cuentas visibles (no archivadas) para UI y selectores.
@@ -213,15 +217,36 @@ export const FinanceScreen: React.FC = () => {
         return a.type === 'credit' ? s - bal : s + bal;
     }, 0);
 
+    // Cuando se activa un filtro de cuenta, traer TODOS los movimientos desde
+    // Firestore para que el historial de esa cuenta aparezca completo (no solo
+    // los que ya estaban paginados en pantalla). Al quitar el filtro, se descarta.
+    useEffect(() => {
+        if (!user || !filterAccountId) {
+            setAllTx(null);
+            return;
+        }
+        let cancelled = false;
+        setLoadingAllTx(true);
+        FirestoreService.getAllTransactions(user.uid).then(all => {
+            if (cancelled) return;
+            setAllTx(all);
+            setLoadingAllTx(false);
+        });
+        return () => { cancelled = true; };
+    }, [user, filterAccountId]);
+
     // Lista de movimientos filtrada por cuenta (si hay filtro activo).
     const filteredTxList = useMemo(() => {
         if (!filterAccountId) return txList;
-        return txList.filter(t =>
+        // Si ya cargamos todos los movimientos, filtramos sobre ellos; si todavía
+        // no, usamos los paginados para no mostrar la lista vacía mientras carga.
+        const source = allTx ?? txList;
+        return source.filter(t =>
             t.accountId === filterAccountId ||
             t.fromAccountId === filterAccountId ||
             t.toAccountId === filterAccountId
         );
-    }, [txList, filterAccountId]);
+    }, [txList, allTx, filterAccountId]);
 
     const thisMonth = getCurrentMonth();
 
@@ -961,7 +986,7 @@ export const FinanceScreen: React.FC = () => {
 
                 {filteredTxList.length === 0 ? (
                     <div className="text-center py-10 text-slate-400">
-                        {loadingTx ? (
+                        {loadingTx || loadingAllTx ? (
                             <span className="animate-pulse">Cargando movimientos...</span>
                         ) : filterAccountId ? (
                             <>
@@ -1052,8 +1077,8 @@ export const FinanceScreen: React.FC = () => {
                             );
                         })}
 
-                        {/* Load More Button */}
-                        {hasMore && (
+                        {/* Load More Button (oculto al filtrar: ya están todos cargados) */}
+                        {hasMore && !filterAccountId && (
                             <button
                                 onClick={loadMore}
                                 disabled={loadingTx}
