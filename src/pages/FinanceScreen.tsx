@@ -1184,7 +1184,7 @@ export const FinanceScreen: React.FC = () => {
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">
                                     {txType === 'expense' ? '¿De dónde sale?' : '¿A qué cuenta entra?'}
                                 </label>
-                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible scrollbar-hide pb-1">
+                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible scrollbar-hide -mx-5 sm:-mx-6 px-5 sm:px-6 py-1.5">
                                     {visibleAccounts.map(acc => {
                                         const meta = getAccountMeta(acc.id);
                                         const selected = txAccount === acc.id;
@@ -1313,7 +1313,7 @@ export const FinanceScreen: React.FC = () => {
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">
                                     📤 Cuenta de origen
                                 </label>
-                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible scrollbar-hide pb-1">
+                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible scrollbar-hide -mx-5 sm:-mx-6 px-5 sm:px-6 py-1.5">
                                     {visibleAccounts.map(acc => {
                                         const meta = getAccountMeta(acc.id);
                                         const selected = trFromAccount === acc.id;
@@ -1344,7 +1344,7 @@ export const FinanceScreen: React.FC = () => {
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2 block">
                                     📥 Cuenta de destino
                                 </label>
-                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible scrollbar-hide pb-1">
+                                <div className="flex gap-1.5 sm:gap-2 overflow-x-auto lg:flex-wrap lg:overflow-visible scrollbar-hide -mx-5 sm:-mx-6 px-5 sm:px-6 py-1.5">
                                     {visibleAccounts.map(acc => {
                                         const meta = getAccountMeta(acc.id);
                                         const selected = trToAccount === acc.id;
