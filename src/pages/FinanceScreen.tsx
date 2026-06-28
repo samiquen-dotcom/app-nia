@@ -380,6 +380,9 @@ export const FinanceScreen: React.FC = () => {
 
             await FirestoreService.addTransaction(user.uid, tx);
             setTxList(prev => [tx, ...prev]);
+            // Si hay filtro de cuenta activo, la lista se lee de allTx: insertarlo ahí también
+            // para que el movimiento aparezca al instante sin recargar.
+            setAllTx(prev => prev ? [tx, ...prev] : prev);
 
             // Refresh main data to update balances immediately
             const updatedData = await FirestoreService.getFeatureData(user.uid, 'finance');
@@ -451,6 +454,8 @@ export const FinanceScreen: React.FC = () => {
             const res = await FirestoreService.getTransactions(user.uid, null, 10);
             setTxList(res.transactions);
             setLastDoc(res.lastDoc);
+            // Con filtro activo la lista se lee de allTx: insertar la transferencia ahí también.
+            setAllTx(prev => prev ? [transfer, ...prev] : prev);
 
             setShowTransfer(false);
         } catch (e) {
