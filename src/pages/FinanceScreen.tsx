@@ -212,6 +212,7 @@ export const FinanceScreen: React.FC = () => {
     // porque el historial de una cuenta puede estar más atrás. null = aún no cargados.
     const [allTx, setAllTx] = useState<Transaction[] | null>(null);
     const [loadingAllTx, setLoadingAllTx] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // ─── Computed ───────────────────────────────────────────────────────────────
     // Cuentas visibles (no archivadas) para UI y selectores.
@@ -394,15 +395,25 @@ export const FinanceScreen: React.FC = () => {
     };
 
     const deleteTransaction = async () => {
-        if (showDelModal === null || !user) return;
-        const txToDelete = txList.find(t => t.id === showDelModal);
+        if (showDelModal === null || !user || isDeleting) return;
+        // Buscar en allTx (todos los movimientos, si hay filtro activo) o en la lista paginada.
+        const txToDelete = (allTx ?? txList).find(t => t.id === showDelModal);
         if (!txToDelete) { setShowDelModal(null); return; }
 
-        await FirestoreService.deleteTransaction(user.uid, txToDelete);
-        setTxList(prev => prev.filter(t => t.id !== showDelModal));
-        const updatedData = await FirestoreService.getFeatureData(user.uid, 'finance');
-        if (updatedData) setData(updatedData as FinanceData);
-        setShowDelModal(null);
+        setIsDeleting(true);
+        try {
+            await FirestoreService.deleteTransaction(user.uid, txToDelete);
+            setTxList(prev => prev.filter(t => t.id !== showDelModal));
+            setAllTx(prev => prev ? prev.filter(t => t.id !== showDelModal) : prev);
+            const updatedData = await FirestoreService.getFeatureData(user.uid, 'finance');
+            if (updatedData) setData(updatedData as FinanceData);
+            setShowDelModal(null);
+        } catch (e) {
+            console.error(e);
+            alert('❌ Error al eliminar. Intentá de nuevo.');
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     const saveTransfer = async () => {
@@ -451,21 +462,30 @@ export const FinanceScreen: React.FC = () => {
     };
 
     const deleteTransfer = async () => {
-        if (showDelModal === null || !user) return;
-        const transferToDelete = txList.find(t => t.id === showDelModal && t.type === 'transfer');
+        if (showDelModal === null || !user || isDeleting) return;
+        const transferToDelete = (allTx ?? txList).find(t => t.id === showDelModal && t.type === 'transfer');
         if (!transferToDelete) { setShowDelModal(null); return; }
 
-        await FirestoreService.deleteTransfer(user.uid, {
-            id: transferToDelete.id,
-            type: 'transfer',
-            fromAccountId: transferToDelete.fromAccountId!,
-            toAccountId: transferToDelete.toAccountId!,
-            amount: transferToDelete.amount
-        });
-        setTxList(prev => prev.filter(t => t.id !== showDelModal));
-        const updatedData = await FirestoreService.getFeatureData(user.uid, 'finance');
-        if (updatedData) setData(updatedData as FinanceData);
-        setShowDelModal(null);
+        setIsDeleting(true);
+        try {
+            await FirestoreService.deleteTransfer(user.uid, {
+                id: transferToDelete.id,
+                type: 'transfer',
+                fromAccountId: transferToDelete.fromAccountId!,
+                toAccountId: transferToDelete.toAccountId!,
+                amount: transferToDelete.amount
+            });
+            setTxList(prev => prev.filter(t => t.id !== showDelModal));
+            setAllTx(prev => prev ? prev.filter(t => t.id !== showDelModal) : prev);
+            const updatedData = await FirestoreService.getFeatureData(user.uid, 'finance');
+            if (updatedData) setData(updatedData as FinanceData);
+            setShowDelModal(null);
+        } catch (e) {
+            console.error(e);
+            alert('❌ Error al eliminar. Intentá de nuevo.');
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     const addCustomCategory = async () => {
@@ -1567,24 +1587,37 @@ export const FinanceScreen: React.FC = () => {
 
             {/* ── Delete Confirm Modal ─────���───────────────────────────────────── */}
             {showDelModal !== null && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6" onClick={() => setShowDelModal(null)}>
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6" onClick={() => { if (!isDeleting) setShowDelModal(null); }}>
                     <div className="bg-white dark:bg-[#2d1820] rounded-3xl p-6 w-full max-w-xs shadow-2xl text-center" onClick={e => e.stopPropagation()}>
                         <span className="material-symbols-outlined text-5xl text-rose-400 mb-3 block">delete_forever</span>
                         <h2 className="font-extrabold text-slate-800 dark:text-slate-100 text-lg mb-1">¿Eliminar movimiento?</h2>
                         <p className="text-sm text-slate-400 mb-5">Esta acción no se puede deshacer.</p>
                         <div className="flex gap-2">
-                            <button onClick={() => setShowDelModal(null)} className="flex-1 bg-slate-100 dark:bg-[#3a2028] text-slate-500 dark:text-slate-300 py-3 rounded-2xl font-bold text-sm">
+                            <button
+                                onClick={() => setShowDelModal(null)}
+                                disabled={isDeleting}
+                                className="flex-1 bg-slate-100 dark:bg-[#3a2028] text-slate-500 dark:text-slate-300 py-3 rounded-2xl font-bold text-sm disabled:opacity-50"
+                            >
                                 Cancelar
                             </button>
-                            <button onClick={() => {
-                                const isTransfer = txList.find(t => t.id === showDelModal && t.type === 'transfer');
-                                if (isTransfer) {
-                                    deleteTransfer();
-                                } else {
-                                    deleteTransaction();
-                                }
-                            }} className="flex-1 bg-rose-500 text-white py-3 rounded-2xl font-bold text-sm hover:bg-rose-600 transition-colors">
-                                Eliminar
+                            <button
+                                onClick={() => {
+                                    const isTransfer = (allTx ?? txList).find(t => t.id === showDelModal && t.type === 'transfer');
+                                    if (isTransfer) {
+                                        deleteTransfer();
+                                    } else {
+                                        deleteTransaction();
+                                    }
+                                }}
+                                disabled={isDeleting}
+                                className="flex-1 bg-rose-500 text-white py-3 rounded-2xl font-bold text-sm hover:bg-rose-600 transition-colors disabled:opacity-70 flex items-center justify-center gap-1.5"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                                        Eliminando...
+                                    </>
+                                ) : 'Eliminar'}
                             </button>
                         </div>
                     </div>
