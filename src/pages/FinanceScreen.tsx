@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFeatureData } from '../hooks/useFeatureData';
 import { useAuth } from '../context/AuthContext';
-import { FirestoreService } from '../services/firestore';
+import { FirestoreService, genTxId } from '../services/firestore';
 import type { FinanceData, FinanceAccount, FinanceAccountType, Transaction, CustomCategory, TransferTransaction } from '../types';
 
 // ─── Account types (patrimonio) ──────────────────────────────────────────────
@@ -107,7 +107,7 @@ const exportCSV = (transactions: Transaction[], accounts: FinanceAccount[]) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 export const FinanceScreen: React.FC = () => {
     const { user } = useAuth();
-    const { data, save, setData } = useFeatureData<FinanceData>('finance', {
+    const { data, setData } = useFeatureData<FinanceData>('finance', {
         accounts: DEFAULT_ACCOUNTS,
         transactions: [],
         customCategories: [],
@@ -201,7 +201,6 @@ export const FinanceScreen: React.FC = () => {
     const [newAccountColor, setNewAccountColor] = useState('slate');
     const [newAccountType, setNewAccountType] = useState<FinanceAccountType>('cash');
     const [newAccountArchived, setNewAccountArchived] = useState(false);
-    const [editingAccountOldInitial, setEditingAccountOldInitial] = useState(0);
     const [isAddingAccount, setIsAddingAccount] = useState(false);
     const [isManagingAccounts, setIsManagingAccounts] = useState(false);
     const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
@@ -367,7 +366,7 @@ export const FinanceScreen: React.FC = () => {
         try {
             const now = new Date();
             const tx: Transaction = {
-                id: Date.now(),
+                id: genTxId(),
                 type: txType,
                 accountId: txAccount,
                 amount: val,
@@ -434,7 +433,7 @@ export const FinanceScreen: React.FC = () => {
         try {
             const now = new Date();
             const transfer: TransferTransaction = {
-                id: Date.now(),
+                id: genTxId(),
                 type: 'transfer',
                 fromAccountId: trFromAccount,
                 toAccountId: trToAccount,
@@ -494,16 +493,24 @@ export const FinanceScreen: React.FC = () => {
         }
     };
 
+    // Guarda SOLO el campo customCategories en Firestore (merge), sin reescribir
+    // accounts ni monthStats desde React, que podían estar desactualizados y descuadrar.
+    const persistCustomCategories = async (cats: CustomCategory[]) => {
+        if (!user) return;
+        await FirestoreService.saveFeatureData(user.uid, 'finance', { customCategories: cats });
+        setData({ ...data, customCategories: cats });
+    };
+
     const addCustomCategory = async () => {
         if (!newCatLabel.trim() || !newCatEmoji.trim()) return;
         const cat: CustomCategory = { emoji: newCatEmoji.trim(), label: newCatLabel.trim() };
-        await save({ customCategories: [...customCats, cat] });
+        await persistCustomCategories([...customCats, cat]);
         setShowAddCat(false); setNewCatLabel(''); setNewCatEmoji('');
     };
 
     const deleteCustomCategory = async (label: string) => {
         if (confirm('¿Eliminar categoría?')) {
-            await save({ customCategories: customCats.filter(c => c.label !== label) });
+            await persistCustomCategories(customCats.filter(c => c.label !== label));
         }
     };
 
@@ -516,7 +523,6 @@ export const FinanceScreen: React.FC = () => {
         setNewAccountType('cash');
         setNewAccountArchived(false);
         setEditingAccountId(null);
-        setEditingAccountOldInitial(0);
     };
 
     const openEditAccount = (acc: FinanceAccount) => {
@@ -524,7 +530,6 @@ export const FinanceScreen: React.FC = () => {
         setNewAccountName(acc.name);
         setNewAccountEmoji(acc.emoji || '💳');
         setNewAccountBalance(String(acc.initialBalance ?? 0));
-        setEditingAccountOldInitial(acc.initialBalance ?? 0);
         setNewAccountColor(acc.color || 'slate');
         setNewAccountType(acc.type ?? 'cash');
         setNewAccountArchived(!!acc.archived);
@@ -532,50 +537,36 @@ export const FinanceScreen: React.FC = () => {
     };
 
     const saveCustomAccount = async () => {
-        if (!newAccountName.trim() || isAddingAccount) return;
+        if (!newAccountName.trim() || isAddingAccount || !user) return;
 
         setIsAddingAccount(true);
 
         try {
             const parsedInitial = parseFloat(newAccountBalance) || 0;
 
-            if (editingAccountId) {
-                // Modificar cuenta existente. Si cambia initialBalance, ajusta balance por el diff
-                // para que los movimientos ya aplicados se mantengan coherentes.
-                const diff = parsedInitial - editingAccountOldInitial;
-                const updatedAccounts = accounts.map(acc => {
-                    if (acc.id === editingAccountId) {
-                        const currentBalance = acc.balance ?? acc.initialBalance ?? 0;
-                        return {
-                            ...acc,
-                            name: newAccountName.trim(),
-                            emoji: newAccountEmoji,
-                            color: newAccountColor,
-                            type: newAccountType,
-                            archived: newAccountArchived,
-                            initialBalance: parsedInitial,
-                            balance: currentBalance + diff,
-                        };
-                    }
-                    return acc;
-                });
-                await save({ accounts: updatedAccounts });
-                alert(`✅ Cuenta actualizada exitosamente`);
-            } else {
-                // Crear nueva
-                const newAccount: FinanceAccount = {
-                    id: `custom_${Date.now()}`,
-                    name: newAccountName.trim(),
-                    initialBalance: parsedInitial,
-                    balance: parsedInitial,
-                    emoji: newAccountEmoji,
-                    color: newAccountColor,
-                    type: newAccountType,
-                    archived: newAccountArchived,
-                };
-                await save({ accounts: [...accounts, newAccount] });
-                alert(`✅ Cuenta "${newAccount.name}" agregada exitosamente`);
-            }
+            // upsertAccount es transaccional: lee los saldos frescos de Firestore y solo
+            // toca esta cuenta, así nunca pisa los balances de las demás cuentas.
+            const accountPayload: FinanceAccount = {
+                id: editingAccountId ?? `custom_${Date.now()}`,
+                name: newAccountName.trim(),
+                initialBalance: parsedInitial,
+                balance: parsedInitial, // ignorado en edición (se recalcula con el diff dentro de la transacción)
+                emoji: newAccountEmoji,
+                color: newAccountColor,
+                type: newAccountType,
+                archived: newAccountArchived,
+            };
+
+            await FirestoreService.upsertAccount(user.uid, {
+                account: accountPayload,
+                isEdit: !!editingAccountId,
+            });
+
+            // Refrescar datos desde Firestore para reflejar saldos reales.
+            const updated = await FirestoreService.getFeatureData(user.uid, 'finance');
+            if (updated) setData(updated as FinanceData);
+
+            alert(editingAccountId ? `✅ Cuenta actualizada exitosamente` : `✅ Cuenta "${accountPayload.name}" agregada exitosamente`);
             setShowAddAccount(false);
             resetAccountForm();
         } catch (error) {

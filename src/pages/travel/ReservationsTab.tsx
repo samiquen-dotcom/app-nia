@@ -4,7 +4,7 @@ import { generateId, RESERVATION_TYPE_CONFIG, formatCurrency, formatDate, conver
 import { COMMON_CURRENCIES } from './countries';
 import { ConfirmModal } from './ConfirmModal';
 import { useAuth } from '../../context/AuthContext';
-import { FirestoreService, Features } from '../../services/firestore';
+import { FirestoreService, Features, genTxId } from '../../services/firestore';
 
 const RESERVATION_TO_ACTIVITY_TYPE: Record<ReservationType, ActivityType> = {
     flight: 'transport',
@@ -137,7 +137,7 @@ export const ReservationsTab: React.FC<{
             const cfg = RESERVATION_TYPE_CONFIG[r.type];
 
             const tx: Transaction = {
-                id: Date.now(),
+                id: genTxId(),
                 type: 'expense',
                 accountId,
                 amount: amountInBase,

@@ -4,7 +4,7 @@ import { generateId, formatDate, formatCurrency, convertCurrency, totalExpensesI
 import { COMMON_CURRENCIES } from './countries';
 import { ConfirmModal } from './ConfirmModal';
 import { useAuth } from '../../context/AuthContext';
-import { FirestoreService, Features } from '../../services/firestore';
+import { FirestoreService, Features, genTxId } from '../../services/firestore';
 
 const EXPENSE_CATEGORIES: Array<{ key: ExpenseCategory; label: string; icon: string; color: string; emoji: string }> = [
     { key: 'transport', label: 'Transporte', icon: 'directions_bus', color: 'text-blue-500', emoji: '🚌' },
@@ -101,7 +101,7 @@ export const ExpensesTab: React.FC<{
             const cat = EXPENSE_CATEGORIES.find(c => c.key === expense.category);
 
             const tx: Transaction = {
-                id: Date.now(),
+                id: genTxId(),
                 type: 'expense',
                 accountId,
                 amount: amountInBase,

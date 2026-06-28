@@ -42,6 +42,13 @@ export const Features = {
 
 const getUserDoc = (userId: string) => doc(db, 'users', userId);
 
+// Genera un ID numérico único para movimientos. Date.now() (milisegundos) podía
+// colisionar si se creaban dos movimientos en el mismo ms (o al sincronizar varios
+// gastos de viaje seguidos), guardándolos en el mismo doc y descuadrando el saldo.
+// Multiplicamos por 1000 y sumamos un sufijo aleatorio: sigue siendo numérico y
+// ordenable (más nuevo = mayor) y queda por encima de los IDs viejos (Date.now()).
+export const genTxId = () => Date.now() * 1000 + Math.floor(Math.random() * 1000);
+
 // ─── Diary serialization helpers ─────────────────────────────────────────────
 // Firestore no permite arrays anidados (boolean[][]). El loop pattern usa
 // `steps: boolean[][]`; lo codificamos como `string[]` de bits ("10101010")
@@ -281,6 +288,58 @@ export const FirestoreService = {
             });
         } catch (e) {
             console.error("Error adding transfer:", e);
+            throw e;
+        }
+    },
+
+    // Crear o editar una cuenta SIN pisar los saldos de las demás.
+    // Lee las cuentas frescas dentro de una transacción atómica; en edición ajusta
+    // el balance por la diferencia de saldo inicial usando el valor real en Firestore
+    // (no el de React, que podía estar desactualizado y descuadrar todo).
+    upsertAccount: async (
+        userId: string,
+        opts: {
+            account: FinanceAccount;        // datos de la cuenta (metadata + initialBalance)
+            isEdit: boolean;                // true = editar existente, false = crear nueva
+        }
+    ) => {
+        const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);
+        try {
+            await runTransaction(db, async (transaction) => {
+                const financeDoc = await transaction.get(financeRef);
+                const financeData = financeDoc.exists() ? financeDoc.data() : { accounts: [] };
+                const accounts: FinanceAccount[] = (financeData.accounts && financeData.accounts.length > 0)
+                    ? JSON.parse(JSON.stringify(financeData.accounts))
+                    : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+
+                if (opts.isEdit) {
+                    const idx = accounts.findIndex(a => a.id === opts.account.id);
+                    if (idx >= 0) {
+                        const old = accounts[idx];
+                        const oldInitial = old.initialBalance ?? 0;
+                        const newInitial = opts.account.initialBalance ?? 0;
+                        const diff = newInitial - oldInitial;
+                        const currentBalance = old.balance ?? oldInitial;
+                        accounts[idx] = {
+                            ...old,
+                            name: opts.account.name,
+                            emoji: opts.account.emoji,
+                            color: opts.account.color,
+                            type: opts.account.type,
+                            archived: opts.account.archived,
+                            initialBalance: newInitial,
+                            balance: currentBalance + diff, // solo ajusta ESTA cuenta
+                        };
+                    }
+                } else {
+                    // Crear: balance arranca en initialBalance. No toca las demás cuentas.
+                    accounts.push({ ...opts.account, balance: opts.account.initialBalance ?? 0 });
+                }
+
+                transaction.set(financeRef, { accounts }, { merge: true });
+            });
+        } catch (e) {
+            console.error("Error upserting account:", e);
             throw e;
         }
     },
