@@ -1132,7 +1132,7 @@ export const FinanceScreen: React.FC = () => {
             {showAdd && (
                 <div className="fixed top-0 left-0 right-0 bottom-0 z-[70] flex flex-col justify-end sm:justify-center items-center overflow-hidden">
                     <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity" onClick={() => setShowAdd(false)} />
-                    <div className="relative w-full max-w-md lg:max-w-3xl bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300 pointer-events-auto">
+                    <div className="relative w-full max-w-md lg:max-w-3xl bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col h-full sm:h-auto max-h-full sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300 pointer-events-auto">
 
                         {/* Top spacing to avoid cutout on some mobile browsers */}
                         <div className="pt-2 sm:pt-0" />
@@ -1279,7 +1279,7 @@ export const FinanceScreen: React.FC = () => {
             {showTransfer && (
                 <div className="fixed top-0 left-0 right-0 bottom-0 z-[70] flex flex-col justify-end sm:justify-center items-center overflow-hidden">
                     <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity" onClick={() => setShowTransfer(false)} />
-                    <div className="relative w-full max-w-md lg:max-w-3xl bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300 pointer-events-auto">
+                    <div className="relative w-full max-w-md lg:max-w-3xl bg-white dark:bg-[#231218] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col h-full sm:h-auto max-h-full sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300 pointer-events-auto">
                         <div className="pt-2 sm:pt-0" />
                         <div className="flex flex-col items-center pt-3 pb-1 border-b border-slate-50 dark:border-white/5">
                             <div className="w-10 h-1 flex-shrink-0 rounded-full bg-slate-200 dark:bg-slate-600 mb-2" />
