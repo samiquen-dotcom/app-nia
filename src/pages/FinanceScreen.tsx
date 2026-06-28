@@ -455,7 +455,8 @@ export const FinanceScreen: React.FC = () => {
             setTxList(res.transactions);
             setLastDoc(res.lastDoc);
             // Con filtro activo la lista se lee de allTx: insertar la transferencia ahí también.
-            setAllTx(prev => prev ? [transfer, ...prev] : prev);
+            // En la lista los transfers viven como Transaction (así los devuelve Firestore).
+            setAllTx(prev => prev ? [transfer as unknown as Transaction, ...prev] : prev);
 
             setShowTransfer(false);
         } catch (e) {
