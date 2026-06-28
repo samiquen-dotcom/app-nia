@@ -1078,6 +1078,23 @@ export const FinanceScreen: React.FC = () => {
                                             <p className="text-xs text-slate-400 truncate">{t.description}</p>
                                         )}
                                         <p className="text-[10px] text-slate-400">{t.date}</p>
+                                        {/* Saldo resultante en la(s) cuenta(s) tras este movimiento (auditoría) */}
+                                        {!isTransfer && t.balanceAfter != null && (
+                                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                                                Saldo: <span className="text-slate-600 dark:text-slate-300">{fmt2(t.balanceAfter)}</span>
+                                            </p>
+                                        )}
+                                        {isTransfer && (t.fromBalanceAfter != null || t.toBalanceAfter != null) && (
+                                            <p className="text-[10px] font-bold text-slate-400 mt-0.5 truncate">
+                                                Saldos:{' '}
+                                                {t.fromBalanceAfter != null && (
+                                                    <span className="text-slate-600 dark:text-slate-300">{fromAccMeta?.emoji} {fmt2(t.fromBalanceAfter)}</span>
+                                                )}
+                                                {t.toBalanceAfter != null && (
+                                                    <span className="text-slate-600 dark:text-slate-300"> · {toAccMeta?.emoji} {fmt2(t.toBalanceAfter)}</span>
+                                                )}
+                                            </p>
+                                        )}
                                     </div>
 
                                     {/* Amount + delete */}

@@ -29,6 +29,10 @@ export interface Transaction {
     // Para transferencias
     fromAccountId?: string;
     toAccountId?: string;
+    // Saldo resultante tras aplicar el movimiento (auditoría / "qué quedó en la cuenta")
+    balanceAfter?: number;        // income/expense: saldo de accountId después
+    fromBalanceAfter?: number;    // transfer: saldo de la cuenta origen después
+    toBalanceAfter?: number;      // transfer: saldo de la cuenta destino después
     // Origen del gasto (ej. viaje)
     sourceType?: 'travel' | 'manual';
     sourceTripId?: string;
@@ -44,6 +48,8 @@ export interface TransferTransaction {
     description: string;
     dateISO: string;
     date: string;
+    fromBalanceAfter?: number;    // saldo de la cuenta origen después
+    toBalanceAfter?: number;      // saldo de la cuenta destino después
 }
 
 export interface MonthStats {

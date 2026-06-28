@@ -191,6 +191,8 @@ export const FirestoreService = {
                     acc.balance = tx.type === 'income'
                         ? currentBalance + amount
                         : currentBalance - amount;
+                    // Guardar el saldo resultante en el movimiento (auditoría).
+                    tx.balanceAfter = acc.balance;
                 }
 
                 // 3. Actualizar estadísticas del mes
@@ -247,6 +249,8 @@ export const FirestoreService = {
         description: string;
         dateISO: string;
         date: string;
+        fromBalanceAfter?: number;
+        toBalanceAfter?: number;
     }) => {
         const financeRef = doc(db, `users/${userId}/features`, Features.FINANCE);
         const txCollectionRef = collection(financeRef, 'transactions');
@@ -265,6 +269,7 @@ export const FirestoreService = {
                 if (fromIndex >= 0) {
                     const currentBalance = accounts[fromIndex].balance ?? accounts[fromIndex].initialBalance ?? 0;
                     accounts[fromIndex].balance = currentBalance - transfer.amount;
+                    transfer.fromBalanceAfter = accounts[fromIndex].balance;
                 }
 
                 // Sumar a cuenta destino
@@ -272,9 +277,10 @@ export const FirestoreService = {
                 if (toIndex >= 0) {
                     const currentBalance = accounts[toIndex].balance ?? accounts[toIndex].initialBalance ?? 0;
                     accounts[toIndex].balance = currentBalance + transfer.amount;
+                    transfer.toBalanceAfter = accounts[toIndex].balance;
                 }
 
-                // Guardar transacción de transferencia
+                // Guardar transacción de transferencia (con saldos resultantes)
                 const newTxRef = doc(txCollectionRef, String(transfer.id));
                 transaction.set(newTxRef, transfer);
 
@@ -537,12 +543,16 @@ export const FirestoreService = {
             }));
             const monthStats: Record<string, MonthStats> = {};
 
-            // 2. Traer TODAS las transacciones (incluye transfers)
+            // 2. Traer TODAS las transacciones EN ORDEN CRONOLÓGICO (id ascendente),
+            //    para poder reconstruir el saldo resultante de cada movimiento.
             const txRef = collection(db, `users/${userId}/features/${Features.FINANCE}/transactions`);
-            const snap = await getDocs(txRef);
+            const snap = await getDocs(query(txRef, orderBy('id', 'asc')));
 
-            // 3. Re-procesar una por una
-            snap.forEach(d => {
+            // Acumular correcciones de balanceAfter para reescribir en los movimientos.
+            const balanceUpdates: { ref: any; data: any }[] = [];
+
+            // 3. Re-procesar una por una, en orden
+            snap.docs.forEach(d => {
                 const tx = d.data() as Trade;
 
                 if (tx.type === 'transfer') {
@@ -550,15 +560,28 @@ export const FirestoreService = {
                     if (fromIdx >= 0) accounts[fromIdx].balance -= tx.amount;
                     const toIdx = accounts.findIndex(a => a.id === tx.toAccountId);
                     if (toIdx >= 0) accounts[toIdx].balance += tx.amount;
+
+                    // Rellenar/corregir saldos resultantes de la transferencia
+                    const newFrom = fromIdx >= 0 ? accounts[fromIdx].balance : undefined;
+                    const newTo = toIdx >= 0 ? accounts[toIdx].balance : undefined;
+                    const upd: any = {};
+                    if (newFrom !== undefined && tx.fromBalanceAfter !== newFrom) upd.fromBalanceAfter = newFrom;
+                    if (newTo !== undefined && tx.toBalanceAfter !== newTo) upd.toBalanceAfter = newTo;
+                    if (Object.keys(upd).length) balanceUpdates.push({ ref: d.ref, data: upd });
                     return;
                 }
 
                 // Balance
                 const accIndex = accounts.findIndex(a => a.id === tx.accountId);
+                let newBalanceAfter: number | undefined;
                 if (accIndex >= 0) {
                     const acc = accounts[accIndex];
                     if (tx.type === 'income') acc.balance += tx.amount;
                     else acc.balance -= tx.amount;
+                    newBalanceAfter = acc.balance;
+                }
+                if (newBalanceAfter !== undefined && tx.balanceAfter !== newBalanceAfter) {
+                    balanceUpdates.push({ ref: d.ref, data: { balanceAfter: newBalanceAfter } });
                 }
 
                 // Stats
@@ -583,7 +606,14 @@ export const FirestoreService = {
                 }
             });
 
-            // 4. Guardar corrección
+            // 4. Persistir los saldos resultantes corregidos en los movimientos (en lotes)
+            for (let i = 0; i < balanceUpdates.length; i += 450) {
+                const batch = writeBatch(db);
+                balanceUpdates.slice(i, i + 450).forEach(u => batch.update(u.ref, u.data));
+                await batch.commit();
+            }
+
+            // 5. Guardar corrección de cuentas y stats
             await setDoc(financeRef, {
                 accounts,
                 monthStats
