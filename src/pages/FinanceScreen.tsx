@@ -75,6 +75,13 @@ const fmt = (n: number) => {
     return `${sign}$${abs.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
 };
 
+// Igual que fmt pero con dos decimales. Se usa para los saldos de las cuentas.
+const fmt2 = (n: number) => {
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    return `${sign}$${abs.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7); // YYYY-MM
 
 // Formatear nombre del mes para mostrar (ej: "2025-03" → "Marzo 2025")
@@ -770,7 +777,7 @@ export const FinanceScreen: React.FC = () => {
                                     {acc.archived && <span className="text-[8px] opacity-70">(archivada)</span>}
                                 </p>
                                 <p className={`text-lg font-extrabold ${meta.textColor} leading-tight truncate`}>
-                                    {isCredit && balance > 0 ? '-' : ''}{fmt(balance)}
+                                    {isCredit && balance > 0 ? '-' : ''}{fmt2(balance)}
                                 </p>
                             </div>
                         );
@@ -1163,7 +1170,7 @@ export const FinanceScreen: React.FC = () => {
                                             >
                                                 <span className="text-xl">{meta?.emoji || '💳'}</span>
                                                 <span className={`text-[10px] w-full min-w-0 truncate font-bold text-center ${selected ? 'text-violet-600 dark:text-violet-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
-                                                <span className="text-[9px] text-slate-400 truncate">{fmt(acc.balance ?? acc.initialBalance)}</span>
+                                                <span className="text-[9px] text-slate-400 truncate">{fmt2(acc.balance ?? acc.initialBalance)}</span>
                                             </button>
                                         );
                                     })}
@@ -1299,7 +1306,7 @@ export const FinanceScreen: React.FC = () => {
                                             >
                                                 <span className="text-xl">{meta?.emoji || '💳'}</span>
                                                 <span className={`text-[10px] w-full min-w-0 truncate font-bold text-center ${selected ? 'text-blue-600 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
-                                                <span className="text-[9px] text-slate-400 truncate">{fmt(balance)}</span>
+                                                <span className="text-[9px] text-slate-400 truncate">{fmt2(balance)}</span>
                                             </button>
                                         );
                                     })}
@@ -1330,7 +1337,7 @@ export const FinanceScreen: React.FC = () => {
                                             >
                                                 <span className="text-xl">{meta?.emoji || '💳'}</span>
                                                 <span className={`text-[10px] w-full min-w-0 truncate font-bold text-center ${selected ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}>{acc.name}</span>
-                                                <span className="text-[9px] text-slate-400 truncate">{fmt(balance)}</span>
+                                                <span className="text-[9px] text-slate-400 truncate">{fmt2(balance)}</span>
                                             </button>
                                         );
                                     })}
